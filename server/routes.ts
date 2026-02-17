@@ -196,7 +196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const withPrompt = {
       ...baseBody,
       prompt: {
-        id: "pmpt_69948eeec39481959a7cc4250542590f01fd5d101c307675",
+        id: "pmpt_68da7434aefc8195aec2c1e07cfc24a7053b8ea30d848663",
         version: "18"
       },
       tools: TOOLS
@@ -217,7 +217,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const json = JSON.parse(text);
       console.log("[Realtime] OK",
         "model=", json?.model,
-        "prompt_id_applied=", "pmpt_69948eeec39481959a7cc4250542590f01fd5d101c307675",
+        "prompt_id_applied=", "pmpt_68da7434aefc8195aec2c1e07cfc24a7053b8ea30d848663",
         "version=", "18");
       return res.json({ client_secret: json.client_secret });
     } catch (e) {
@@ -417,7 +417,7 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
         modalities: ["audio", "text"],
         turn_detection: { type: "server_vad" },
         prompt: {
-          id: "pmpt_69948eeec39481959a7cc4250542590f01fd5d101c307675",
+          id: "pmpt_68da7434aefc8195aec2c1e07cfc24a7053b8ea30d848663",
           version: "18"
         }
       };
@@ -493,7 +493,7 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
                 turn_detection: { type: "server_vad" },
                 tools: TOOLS,
                 prompt: {
-                  id: "pmpt_69948eeec39481959a7cc4250542590f01fd5d101c307675",
+                  id: "pmpt_68da7434aefc8195aec2c1e07cfc24a7053b8ea30d848663",
                   version: "18"
                 }
               })
