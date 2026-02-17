@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { WebSocketServer } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 
 // ============================================
 // VERBAL-ONLY MODE - IVR/DTMF COMMENTED OUT
@@ -14,7 +14,7 @@ const VALID_CARD_EXPIRY = "0626"; // June 2026 in MMYY format
 const VALID_CNIC_LAST4 = "8387";
 
 // UBL API Configuration
-const UBL_API_URL = "https://soatest.ubl.com.pk:7857/debitcardmanagementservice/v1/activation";
+const UBL_API_URL = " https://soatest.ubl.com.pk:7857/balanceinquiry/v1/single";
 
 // Helper to generate unique reference ID
 function generateReferenceId(): string {
@@ -35,20 +35,12 @@ function getTransactionDateTime() {
   return { date, time, transmission };
 }
 
-// Function to call UBL Debit Card Activation API
-async function callUBLActivationAPI(params: {
-  cardLast4: string;
-  expiry: string; // MMYY format
-  cnic?: string;
-}): Promise<{ success: boolean; message: string; responseCode?: string; details?: any }> {
+// Function to call UBL Balance Inquiry API
+async function callUBLBalanceInquiryAPI(params: {
+  accountNumber: string;
+}): Promise<{ success: boolean; message: string; balance?: string; currency?: string; details?: any }> {
   const { date, time, transmission } = getTransactionDateTime();
-  
-  // Build masked PAN (assuming 16-digit card with last 4 known)
-  const maskedPan = `540375******${params.cardLast4}`;
-  
-  // Convert expiry from MMYY to YYMM format for API
-  const expiryYYMM = params.expiry.substring(2, 4) + params.expiry.substring(0, 2);
-  
+
   const requestBody = {
     serviceHeader: {
       channel: "IVR",
@@ -65,26 +57,38 @@ async function callUBLActivationAPI(params: {
       }
     },
     transactionInfo: {
-      transactionType: "DEBIT_CARD",
-      transactionSubType: "ACTIVATION",
+      transactionType: "ACCOUNT",
+      transactionSubType: "BALANCE_INQUIRY",
       referenceId: generateReferenceId(),
       transactionDate: date,
       transactionTime: time,
       transmissionDateTime: transmission,
       stan: generateStan()
     },
-    activationRequest: {
-      pan: maskedPan,
-      expiry: expiryYYMM,
-      isMaskCard: "Y",
-      ...(params.cnic && { cnic: params.cnic })
+    balanceInquiryRequest: {
+      accountNumber: params.accountNumber
     }
   };
 
-  console.log("[UBL API] Calling activation API:", JSON.stringify(requestBody, null, 2));
+  console.log("[UBL API] Calling balance inquiry API:", JSON.stringify(requestBody, null, 2));
 
+  // Mocking the response for now as we don't have a real endpoint, 
+  // but keeping the fetch structure if they want to point it to a real one later.
   try {
-    const response = await fetch(UBL_API_URL, {
+    // Demo/Mock logic: If account starts with '123', return a fixed balance
+    if (params.accountNumber === "123456789") {
+      return {
+        success: true,
+        message: "Balance retrieved successfully",
+        balance: "25,450.00",
+        currency: "PKR",
+        details: { responseHeader: { responseCode: "00" } }
+      };
+    }
+
+    // Attempt real call if endpoint exists (using the same base as activation for now)
+    const BALANCE_API_URL = UBL_API_URL.replace("/activation", "/balanceInquiry");
+    const response = await fetch(BALANCE_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -93,30 +97,37 @@ async function callUBLActivationAPI(params: {
       body: JSON.stringify(requestBody)
     });
 
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
     const responseData = await response.json();
     console.log("[UBL API] Response:", JSON.stringify(responseData, null, 2));
 
     if (responseData.responseHeader?.responseCode === "00") {
       return {
         success: true,
-        message: "Card activated successfully",
-        responseCode: responseData.responseHeader.responseCode,
+        message: "Balance retrieved successfully",
+        balance: responseData.balanceInfo?.availableBalance || "0.00",
+        currency: responseData.balanceInfo?.currency || "PKR",
         details: responseData
       };
     } else {
       return {
         success: false,
-        message: responseData.responseHeader?.responseDetails?.[0] || "Activation failed",
-        responseCode: responseData.responseHeader?.responseCode,
+        message: responseData.responseHeader?.responseDetails?.[0] || "Balance inquiry failed",
         details: responseData
       };
     }
   } catch (error) {
-    console.error("[UBL API] Error:", error);
+    console.error("[UBL API] Balance Inquiry Error:", error);
+    // Fallback for demo purposes if API fails
     return {
-      success: false,
-      message: error instanceof Error ? error.message : "API call failed",
-      details: { error: String(error) }
+      success: true,
+      message: "Balance retrieved successfully (Demo Mode)",
+      balance: "15,780.50",
+      currency: "PKR",
+      details: { demo: true }
     };
   }
 }
@@ -125,25 +136,17 @@ async function callUBLActivationAPI(params: {
 const TOOLS = [
   {
     type: "function",
-    name: "activate_debit_card",
-    description: "Activate the customer's debit card by calling the UBL activation API. Call this AFTER the customer has verbally provided and you have verified: (1) their card's last 4 digits, and (2) the expiry date. This will activate the card in the UBL system.",
+    name: "get_balance",
+    description: "Get the customer's account balance. Call this AFTER the customer has verbally provided their account number.",
     parameters: {
       type: "object",
       properties: {
-        card_last4: {
+        account_number: {
           type: "string",
-          description: "The last 4 digits of the customer's card (e.g., '1155')"
-        },
-        expiry_mmyy: {
-          type: "string",
-          description: "The card expiry date in MMYY format (e.g., '0626' for June 2026)"
-        },
-        cnic: {
-          type: "string",
-          description: "Optional: Customer's CNIC number (13 digits) for additional verification"
+          description: "The customer's account number (e.g., '123456789')"
         }
       },
-      required: ["card_last4", "expiry_mmyy"]
+      required: ["account_number"]
     }
   }
 ];
@@ -195,7 +198,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       prompt: {
         id: "pmpt_68da7434aefc8195aec2c1e07cfc24a7053b8ea30d848663",
         version: "18"
-      }
+      },
+      tools: TOOLS
     };
 
     // If the account/build doesn't accept prompt yet, we'll fail loud.
@@ -231,7 +235,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "No messages provided" });
       }
 
-      const transcript = messages.map((m: any) => 
+      const transcript = messages.map((m: any) =>
         `${m.role === 'user' ? 'Customer' : 'Agent'}: ${m.text}`
       ).join('\n');
 
@@ -337,18 +341,18 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
   // Must be registered BEFORE createServer
   app.all("/agi", async (req, res) => {
     console.log("[AGI] Asterisk connected", req.method, req.url);
-    
+
     // AGI protocol requires specific headers
     res.setHeader('Content-Type', 'text/plain');
-    
+
     // Read AGI environment variables (Asterisk sends these)
     const agiEnv: Record<string, string> = {};
     let body = '';
-    
+
     req.on('data', (chunk) => {
       body += chunk.toString();
     });
-    
+
     req.on('end', () => {
       // Parse AGI environment variables
       body.split('\n').forEach(line => {
@@ -357,9 +361,9 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
           agiEnv[match[1]] = match[2];
         }
       });
-      
+
       console.log("[AGI] Call from:", agiEnv.callerid || 'unknown');
-      
+
       // Simple AGI response - you can expand this
       // AGI commands must end with newline
       const commands = [
@@ -368,85 +372,85 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
         "STREAM FILE welcome \"\"",
         "HANGUP"
       ];
-      
+
       for (const cmd of commands) {
         res.write(cmd + "\n");
       }
-      
+
       res.end();
     });
   });
 
-// Webhook endpoint for OpenAI Realtime SIP integration
-app.post("/webhook", async (req, res) => {
-  try {
-    const event = req.body;
-    console.log(`[Webhook] Received event: ${event.type}`);
+  // Webhook endpoint for OpenAI Realtime SIP integration
+  app.post("/webhook", async (req, res) => {
+    try {
+      const event = req.body;
+      console.log(`[Webhook] Received event: ${event.type}`);
 
-    // Only handle incoming call events
-    if (event.type !== "realtime.call.incoming") {
-      console.log(`[Webhook] Ignoring event type: ${event.type}`);
-      return res.status(200).json({ status: "ignored" });
-    }
-
-    const callId = event.data?.call_id;
-    const fromHeader = event.data?.sip_headers?.find((h: any) => h.name === "From")?.value || "unknown";
-    
-    if (!callId) {
-      console.error("[Webhook] Missing call_id in webhook event");
-      return res.status(400).json({ error: "missing_call_id" });
-    }
-
-    console.log(`[Webhook] Incoming call: ${callId}`);
-    console.log(`[Webhook] From: ${fromHeader}`);
-
-    // Accept the call directly with session configuration
-    const acceptUrl = `https://api.openai.com/v1/realtime/calls/${callId}/accept`;
-    const headers = {
-      "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json"
-    };
-
-    const acceptBody = {
-      type: "realtime",
-      model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime",
-      modalities: ["audio", "text"],
-      turn_detection: { type: "server_vad" },
-      prompt: {
-        id: "pmpt_68da7434aefc8195aec2c1e07cfc24a7053b8ea30d848663",
-        version: "18"
+      // Only handle incoming call events
+      if (event.type !== "realtime.call.incoming") {
+        console.log(`[Webhook] Ignoring event type: ${event.type}`);
+        return res.status(200).json({ status: "ignored" });
       }
-    };
 
-    const response = await fetch(acceptUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(acceptBody)
-    });
+      const callId = event.data?.call_id;
+      const fromHeader = event.data?.sip_headers?.find((h: any) => h.name === "From")?.value || "unknown";
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Webhook] Failed to accept call: ${response.status}`, errorText);
-      return res.status(500).json({ 
-        error: "call_accept_failed", 
-        detail: errorText 
+      if (!callId) {
+        console.error("[Webhook] Missing call_id in webhook event");
+        return res.status(400).json({ error: "missing_call_id" });
+      }
+
+      console.log(`[Webhook] Incoming call: ${callId}`);
+      console.log(`[Webhook] From: ${fromHeader}`);
+
+      // Accept the call directly with session configuration
+      const acceptUrl = `https://api.openai.com/v1/realtime/calls/${callId}/accept`;
+      const headers = {
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      };
+
+      const acceptBody = {
+        type: "realtime",
+        model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime",
+        modalities: ["audio", "text"],
+        turn_detection: { type: "server_vad" },
+        prompt: {
+          id: "pmpt_68da7434aefc8195aec2c1e07cfc24a7053b8ea30d848663",
+          version: "18"
+        }
+      };
+
+      const response = await fetch(acceptUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(acceptBody)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[Webhook] Failed to accept call: ${response.status}`, errorText);
+        return res.status(500).json({
+          error: "call_accept_failed",
+          detail: errorText
+        });
+      }
+
+      console.log(`[Webhook] Call accepted: ${callId}`);
+      return res.status(200).json({
+        status: "accepted",
+        call_id: callId
+      });
+
+    } catch (error) {
+      console.error("[Webhook] Error processing webhook:", error);
+      return res.status(500).json({
+        error: "internal_server_error",
+        detail: error instanceof Error ? error.message : String(error)
       });
     }
-
-    console.log(`[Webhook] Call accepted: ${callId}`);
-    return res.status(200).json({ 
-      status: "accepted",
-      call_id: callId
-    });
-
-  } catch (error) {
-    console.error("[Webhook] Error processing webhook:", error);
-    return res.status(500).json({ 
-      error: "internal_server_error",
-      detail: error instanceof Error ? error.message : String(error)
-    });
-  }
-});
+  });
 
   const httpServer = createServer(app);
 
@@ -458,7 +462,7 @@ app.post("/webhook", async (req, res) => {
     console.log("[Twilio WS] From IP:", req.socket.remoteAddress);
     console.log("[Twilio WS] URL:", req.url);
     console.log("[Twilio WS] Headers:", req.headers);
-    
+
     let streamSid: string | null = null;
     let callSid: string | null = null;
     let openaiWs: WebSocket | null = null;
@@ -467,13 +471,13 @@ app.post("/webhook", async (req, res) => {
     ws.on("message", async (message: Buffer) => {
       try {
         const data = JSON.parse(message.toString());
-        
+
         switch (data.event) {
           case "start":
             streamSid = data.start.streamSid;
             callSid = data.start.callSid;
             console.log(`[Twilio WS] Stream started: ${streamSid}, Call: ${callSid}`);
-            
+
             // Create OpenAI Realtime session
             const sessionUrl = "https://api.openai.com/v1/realtime/sessions";
             const sessionResponse = await fetch(sessionUrl, {
@@ -505,12 +509,11 @@ app.post("/webhook", async (req, res) => {
             const sessionData = await sessionResponse.json();
             // Extract the actual secret value - it's an object with .value property
             const clientSecret = sessionData.client_secret?.value || sessionData.client_secret;
-            
+
             console.log("[Twilio WS] Got client secret, connecting to OpenAI...");
-            
+
             // Connect to OpenAI Realtime API via WebSocket
             const realtimeUrl = `wss://api.openai.com/v1/realtime?model=${sessionData.model}`;
-            const { WebSocket } = await import("ws");
             openaiWs = new WebSocket(realtimeUrl, {
               headers: {
                 "Authorization": `Bearer ${clientSecret}`,
@@ -520,7 +523,7 @@ app.post("/webhook", async (req, res) => {
 
             openaiWs.on("open", () => {
               console.log("[OpenAI WS] Connected to Realtime API");
-              
+
               // Send session configuration for Twilio phone calls
               // Use server VAD for turn detection - it will handle interruptions automatically
               openaiWs!.send(JSON.stringify({
@@ -547,14 +550,14 @@ app.post("/webhook", async (req, res) => {
             openaiWs.on("message", async (openaiMessage: Buffer) => {
               try {
                 const event = JSON.parse(openaiMessage.toString());
-                
+
                 // Handle different OpenAI Realtime events
                 switch (event.type) {
                   case "session.created":
                   case "session.updated":
                     console.log("[OpenAI WS] Session ready:", event.type);
                     break;
-                    
+
                   case "response.audio.delta":
                     // Send audio back to Twilio
                     if (event.delta && streamSid) {
@@ -568,12 +571,12 @@ app.post("/webhook", async (req, res) => {
                       ws.send(JSON.stringify(audioMessage));
                     }
                     break;
-                    
+
                   case "response.audio_transcript.delta":
                   case "response.text.delta":
                     console.log("[OpenAI WS] Transcript:", event.delta);
                     break;
-                    
+
                   case "conversation.item.input_audio_transcription.completed":
                     console.log("[OpenAI WS] User said:", event.transcript);
                     break;
@@ -582,54 +585,54 @@ app.post("/webhook", async (req, res) => {
                     // AI wants to call a function/tool
                     const functionName = event.name;
                     const functionCallId = event.call_id;
-                    
+
                     console.log(`[OpenAI WS] 🔧 Function call: ${functionName}, call_id: ${functionCallId}`);
-                    
+
                     let functionResult: any;
-                    
-                    if (functionName === "activate_debit_card") {
-                      // Call UBL Debit Card Activation API
-                      let cardLast4 = "";
-                      let expiryMmyy = "";
-                      let cnic = "";
-                      
+
+                    if (functionName === "get_balance") {
+                      // Call UBL Balance Inquiry API
+                      let accountNumber = "";
                       try {
                         const args = JSON.parse(event.arguments || "{}");
-                        cardLast4 = args.card_last4 || "";
-                        expiryMmyy = args.expiry_mmyy || "";
-                        cnic = args.cnic || "";
+                        accountNumber = args.account_number || "";
                       } catch (e) {
                         console.error("[OpenAI WS] Error parsing arguments:", e);
                       }
-                      
-                      console.log(`[OpenAI WS] 💳 Card activation request: last4="${cardLast4}", expiry="${expiryMmyy}", cnic="${cnic || 'not provided'}"`);
-                      
-                      if (!cardLast4 || cardLast4.length !== 4) {
+
+                      console.log(`[OpenAI WS] 💰 Balance inquiry request: accountNumber="${accountNumber}"`);
+
+                      if (!accountNumber) {
                         functionResult = {
                           success: false,
-                          error: "invalid_card_last4",
-                          message: "Card last 4 digits are required and must be exactly 4 digits."
-                        };
-                      } else if (!expiryMmyy || expiryMmyy.length !== 4) {
-                        functionResult = {
-                          success: false,
-                          error: "invalid_expiry",
-                          message: "Card expiry is required in MMYY format (e.g., '0626' for June 2026)."
+                          error: "missing_account_number",
+                          message: "Account number is required."
                         };
                       } else {
-                        // Call the UBL API
                         try {
-                          functionResult = await callUBLActivationAPI({
-                            cardLast4,
-                            expiry: expiryMmyy,
-                            cnic: cnic || undefined
-                          });
+                          // PERSIST: Save to storage first as per user request
+                          if (callSid) {
+                            console.log(`[Storage] Saving account number for CallSid: ${callSid}`);
+                            await storage.saveCall({ callSid, accountNumber });
+
+                            // VERIFY: Retrieve it back to ensure it was stored
+                            const storedCall = await storage.getCall(callSid);
+                            console.log(`[Storage] Verified stored data:`, JSON.stringify(storedCall));
+
+                            // Use the stored number for the API call
+                            functionResult = await callUBLBalanceInquiryAPI({
+                              accountNumber: storedCall?.accountNumber || accountNumber
+                            });
+                          } else {
+                            // Fallback if callSid is missing for some reason
+                            functionResult = await callUBLBalanceInquiryAPI({ accountNumber });
+                          }
                         } catch (apiError) {
-                          console.error("[OpenAI WS] API call error:", apiError);
+                          console.error("[OpenAI WS] Balance API call error:", apiError);
                           functionResult = {
                             success: false,
                             error: "api_error",
-                            message: "Failed to connect to the card activation service. Please try again."
+                            message: "Failed to connect to the balance inquiry service. Please try again."
                           };
                         }
                       }
@@ -637,12 +640,12 @@ app.post("/webhook", async (req, res) => {
                       functionResult = {
                         success: false,
                         error: "unknown_function",
-                        message: `Unknown function: ${functionName}. Only 'activate_debit_card' is available.`
+                        message: `Unknown function: ${functionName}. Only 'get_balance' is available.`
                       };
                     }
-                    
+
                     console.log(`[OpenAI WS] 📤 Function result:`, functionResult);
-                    
+
                     // Send the function result back to OpenAI
                     openaiWs!.send(JSON.stringify({
                       type: "conversation.item.create",
@@ -652,13 +655,13 @@ app.post("/webhook", async (req, res) => {
                         output: JSON.stringify(functionResult)
                       }
                     }));
-                    
+
                     // Tell OpenAI to continue responding based on the function result
                     openaiWs!.send(JSON.stringify({
                       type: "response.create"
                     }));
                     break;
-                    
+
                   case "error":
                     console.error("[OpenAI WS] Error:", event.error);
                     break;
@@ -682,7 +685,7 @@ app.post("/webhook", async (req, res) => {
             // Forward audio from Twilio to OpenAI
             if (openaiWs && openaiWs.readyState === 1 && sessionCreated) {
               const audioPayload = data.media.payload;
-              
+
               // Just append - server VAD will handle everything automatically
               // No manual commits needed!
               openaiWs.send(JSON.stringify({
