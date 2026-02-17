@@ -59,12 +59,12 @@ Incoming Call → Twilio → Webhook (/twilio/voice)
 
 ### Check Backend Logs
 ```bash
-docker logs ubl-backend -f
+docker logs balance-inquiry -f
 ```
 
 ### Check Cloudflare Tunnel Logs
 ```bash
-docker logs cloudflared-tunnel -f
+docker logs balance-inquiry-tunnel -f
 ```
 
 ### Test Webhook Endpoint
@@ -78,7 +78,7 @@ curl https://commons-vienna-app-bikini.trycloudflare.com/healthz
 The free Cloudflare tunnel URL (`commons-vienna-app-bikini.trycloudflare.com`) changes every time you restart the containers. 
 
 **After each restart:**
-1. Get the new URL: `docker logs cloudflared-tunnel 2>&1 | grep "trycloudflare.com"`
+1. Get the new URL: `docker logs balance-inquiry-tunnel 2>&1 | grep "trycloudflare.com"`
 2. Update your Twilio webhook URL in the console
 
 ### Persistent URL Options
@@ -132,7 +132,7 @@ Your bot uses the UBL Bank customer service prompt:
 ## 🐛 Troubleshooting
 
 ### Call not connecting?
-1. Check backend logs: `docker logs ubl-backend -f`
+1. Check backend logs: `docker logs balance-inquiry -f`
 2. Verify webhook URL is correct in Twilio console
 3. Test webhook: `curl https://YOUR-TUNNEL-URL/twilio/voice`
 
@@ -143,7 +143,7 @@ Your bot uses the UBL Bank customer service prompt:
 
 ### Tunnel not working?
 1. Restart containers: `docker-compose restart`
-2. Get new URL: `docker logs cloudflared-tunnel 2>&1 | grep "trycloudflare.com"`
+2. Get new URL: `docker logs balance-inquiry-tunnel 2>&1 | grep "trycloudflare.com"`
 3. Update Twilio webhook URL
 
 ## 📝 Quick Commands
@@ -155,14 +155,14 @@ docker system prune -f
 docker-compose up -d --build --force-recreate
 
 # Get tunnel URL
-docker logs cloudflared-tunnel 2>&1 | grep "trycloudflare.com"
+docker logs balance-inquiry-tunnel 2>&1 | grep "trycloudflare.com"
 
 # Check health
 curl http://localhost:3000/healthz
 
 # View logs
-docker logs ubl-backend -f
-docker logs cloudflared-tunnel -f
+docker logs balance-inquiry -f
+docker logs balance-inquiry-tunnel -f
 ```
 
 ## 🎉 Success!
