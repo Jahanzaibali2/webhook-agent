@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JS Bank Customer Support - آواز کی مدد</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                borderRadius: {
+                    lg: "var(--radius)",
+                    md: "calc(var(--radius) - 2px)",
+                    sm: "calc(var(--radius) - 4px)",
+                },
+                colors: {
+                    background: "var(--background)",
+                    foreground: "var(--foreground)",
+                    card: {
+                        DEFAULT: "var(--card)",
+                        foreground: "var(--card-foreground)",
+                    },
+                    primary: {
+                        DEFAULT: "var(--primary)",
+                        foreground: "var(--primary-foreground)",
+                    },
+                    secondary: {
+                        DEFAULT: "var(--secondary)",
+                        foreground: "var(--secondary-foreground)",
+                    },
+                    muted: {
+                        DEFAULT: "var(--muted)",
+                        foreground: "var(--muted-foreground)",
+                    },
+                    accent: {
+                        DEFAULT: "var(--accent)",
+                        foreground: "var(--accent-foreground)",
+                    },
+                    border: "var(--border)",
+                    ring: "var(--ring)",
+                }
+            }
+        }
+    };
+    </script>
+    <style>
+        :root {
+            --background: hsl(221 39% 7%);
+            --foreground: hsl(213 31% 96%);
+            --card: hsl(221 39% 11%);
+            --card-foreground: hsl(213 31% 96%);
+            --primary: hsl(193 100% 50%);
+            --primary-foreground: hsl(221 39% 7%);
+            --secondary: hsl(262 52% 59%);
+            --secondary-foreground: hsl(213 31% 96%);
+            --muted: hsl(215 27% 17%);
+            --muted-foreground: hsl(215 20% 65%);
+            --accent: hsl(193 100% 50%);
+            --accent-foreground: hsl(221 39% 7%);
+            --border: hsl(215 27% 17%);
+            --ring: hsl(193 100% 50%);
+            --radius: 8px;
+            
+            --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+            --font-urdu: "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Alvi Nastaleeq", serif;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: radial-gradient(1200px 800px at 50% -20%, hsl(223 47% 18%) 0%, hsl(221 39% 7%) 50%, hsl(218 50% 5%) 100%);
+        }
+
+        .urdu-text {
+            font-family: var(--font-urdu);
+            direction: rtl;
+            unicode-bidi: bidi-override;
+        }
+
+        /* Voice Animation States */
+        .voice-indicator {
+            width: 140px;
+            height: 140px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 50%;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .voice-indicator::before {
+            content: '';
+            position: absolute;
+            inset: -4px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 50%;
+            opacity: 0.3;
+            animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        .voice-indicator.listening::before {
+            animation: listening-glow 1.5s ease-in-out infinite;
+        }
+
+        .voice-indicator.speaking::before {
+            animation: speaking-pulse 0.8s ease-in-out infinite;
+        }
+
+        @keyframes pulse-ring {
+            0% {
+                transform: scale(1);
+                opacity: 0.3;
+            }
+            70% {
+                transform: scale(1.4);
+                opacity: 0;
+            }
+            100% {
+                transform: scale(1.4);
+                opacity: 0;
+            }
+        }
+
+        @keyframes listening-glow {
+            0%, 100% {
+                transform: scale(1.1);
+                opacity: 0.4;
+                filter: blur(1px);
+            }
+            50% {
+                transform: scale(1.3);
+                opacity: 0.1;
+                filter: blur(2px);
+            }
+        }
+
+        @keyframes speaking-pulse {
+            0%, 100% {
+                transform: scale(1.05);
+                opacity: 0.5;
+            }
+            50% {
+                transform: scale(1.25);
+                opacity: 0.2;
+            }
+        }
+
+        /* Button Styles */
+        .action-button {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .action-button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 25px -5px rgba(0, 212, 255, 0.3);
+        }
+
+        .action-button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .action-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Status Animation */
+        .status-text {
+            transition: opacity 0.3s ease-in-out;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 640px) {
+            .voice-indicator {
+                width: 120px;
+                height: 120px;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-background text-foreground">
+    <!-- @COMPONENT: AppHeader -->
+    <header class="text-center py-6 px-4 border-b border-border/10">
+        <h1 class="text-2xl md:text-3xl font-bold tracking-wide text-foreground">
+            JS Bank Customer Support
+        </h1>
+        <p class="text-sm text-muted-foreground mt-2 urdu-text">
+            آواز کے ذریعے کسٹمر سپورٹ
+        </p>
+    </header>
+    <!-- @END_COMPONENT: AppHeader -->
+
+    <!-- @COMPONENT: MainInterface -->
+    <main class="flex-1 flex items-center justify-center px-4 py-8">
+        <div class="w-full max-w-md mx-auto text-center space-y-8">
+            
+            <!-- @COMPONENT: VoiceIndicator -->
+            <div class="flex justify-center">
+                <div id="voiceIndicator" class="voice-indicator" data-state="idle">
+                    <!-- Microphone Icon -->
+                    <svg class="w-12 h-12 text-primary-foreground" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2a3 3 0 00-3 3v6a3 3 0 006 0V5a3 3 0 00-3-3z"/>
+                        <path d="M19 10v1a7 7 0 01-14 0v-1"/>
+                        <path d="M12 18.5v2.5"/>
+                        <path d="M8 21h8"/>
+                    </svg>
+                </div>
+            </div>
+            <!-- @END_COMPONENT: VoiceIndicator -->
+
+            <!-- @COMPONENT: StatusDisplay -->
+            <div class="space-y-4">
+                <div id="statusText" class="status-text text-lg text-muted-foreground min-h-[24px]" data-mock="true">
+                    Click "Start Conversation" to begin
+                </div>
+                
+                <!-- Bilingual Status for Urdu Support -->
+                <div id="urduStatus" class="urdu-text text-sm text-muted-foreground/80 min-h-[20px]" data-mock="true">
+                    بات چیت شروع کرنے کے لیے کلک کریں
+                </div>
+            </div>
+            <!-- @END_COMPONENT: StatusDisplay -->
+
+            <!-- @COMPONENT: ActionControls -->
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <button 
+                    id="startBtn" 
+                    class="action-button px-8 py-3 rounded-full text-primary-foreground font-semibold text-base min-w-[160px] transition-all duration-300"
+                    data-event="click:handleStart"
+                    data-implementation="Should request microphone permission and initiate voice session">
+                    Start Conversation
+                </button>
+                
+                <button 
+                    id="stopBtn" 
+                    class="action-button px-8 py-3 rounded-full text-primary-foreground font-semibold text-base min-w-[160px] opacity-50 cursor-not-allowed"
+                    disabled
+                    data-event="click:handleStop"
+                    data-implementation="Should terminate voice session and release microphone">
+                    Stop
+                </button>
+            </div>
+            <!-- @END_COMPONENT: ActionControls -->
+
+            <!-- @COMPONENT: ConnectionIndicator -->
+            <div class="flex items-center justify-center space-x-2 text-xs text-muted-foreground">
+                <div id="connectionStatus" class="flex items-center space-x-2" data-mock="true">
+                    <div class="w-2 h-2 bg-muted rounded-full" id="connectionDot"></div>
+                    <span>Ready to connect</span>
+                </div>
+            </div>
+            <!-- @END_COMPONENT: ConnectionIndicator -->
+        </div>
+    </main>
+    <!-- @END_COMPONENT: MainInterface -->
+
+    <!-- @COMPONENT: AppFooter -->
+    <footer class="text-center py-6 px-4 border-t border-border/10">
+        <div class="space-y-2">
+            <p class="text-sm text-muted-foreground">
+                🎤 Microphone permission required • Urdu language support
+            </p>
+            <p class="text-xs text-muted-foreground/60 urdu-text">
+                آواز کی شناخت کے لیے مائیکروفون کی اجازت ضروری ہے
+            </p>
+        </div>
+    </footer>
+    <!-- @END_COMPONENT: AppFooter -->
+
+    <!-- Hidden audio element for WebRTC stream -->
+    <audio id="remoteAudio" autoplay style="display: none;" data-implementation="Will be used for OpenAI Realtime audio output"></audio>
+
+    <script>
+        (() => {
+            // @STATE: isConnected:boolean = false
+            // @STATE: isListening:boolean = false
+            // @STATE: connectionState:string = 'idle'
+            
+            const startBtn = document.getElementById("startBtn");
+            const stopBtn = document.getElementById("stopBtn");
+            const statusText = document.getElementById("statusText");
+            const urduStatus = document.getElementById("urduStatus");
+            const voiceIndicator = document.getElementById("voiceIndicator");
+            const connectionDot = document.getElementById("connectionDot");
+            const connectionStatus = document.getElementById("connectionStatus");
+
+            let pc, dc, localStream, remoteAudioEl;
+            let isConnected = false;
+            let isListening = false;
+
+            const MODEL = "gpt-4o-mini-realtime-preview-2024-12-17";
+            const OPENAI_WEBRTC_URL = (model) => `https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`;
+
+            // Status management with bilingual support
+            function updateStatus(englishText, urduText, state = 'idle') {
+                statusText.textContent = englishText;
+                urduStatus.textContent = urduText;
+                
+                // Update voice indicator state
+                voiceIndicator.className = `voice-indicator ${state}`;
+                voiceIndicator.setAttribute('data-state', state);
+                
+                // Update connection indicator
+                updateConnectionIndicator(state);
+            }
+
+            function updateConnectionIndicator(state) {
+                const dot = connectionDot;
+                const status = connectionStatus.querySelector('span');
+                
+                switch(state) {
+                    case 'connecting':
+                        dot.className = 'w-2 h-2 bg-yellow-400 rounded-full animate-pulse';
+                        status.textContent = 'Connecting...';
+                        break;
+                    case 'listening':
+                        dot.className = 'w-2 h-2 bg-green-400 rounded-full';
+                        status.textContent = 'Connected & Listening';
+                        break;
+                    case 'speaking':
+                        dot.className = 'w-2 h-2 bg-blue-400 rounded-full animate-pulse';
+                        status.textContent = 'AI Speaking';
+                        break;
+                    case 'error':
+                        dot.className = 'w-2 h-2 bg-red-400 rounded-full';
+                        status.textContent = 'Connection Error';
+                        break;
+                    default:
+                        dot.className = 'w-2 h-2 bg-muted rounded-full';
+                        status.textContent = 'Ready to connect';
+                }
+            }
+
+            function setControlsState(connected) {
+                isConnected = connected;
+                startBtn.disabled = connected;
+                stopBtn.disabled = !connected;
+                
+                if (connected) {
+                    startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                    stopBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                } else {
+                    startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    stopBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+            }
+
+            async function startConversation() {
+                try {
+                    updateStatus("Requesting microphone access...", "مائیکروفون کی رسائی کی درخواست...", 'connecting');
+                    
+                    // TODO: Implement microphone permission request
+                    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    
+                    updateStatus("Connecting to support system...", "سپورٹ سسٹم سے رابطہ...", 'connecting');
+                    
+                    // TODO: Implement session token request to backend
+                    const sessRes = await fetch("/session", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ model: MODEL, voice: "verse" })
+                    });
+
+                    if (!sessRes.ok) {
+                        throw new Error('Failed to create session');
+                    }
+
+                    const { ephemeralKey } = await sessRes.json();
+                    
+                    // TODO: Implement WebRTC connection setup
+                    // TODO: Implement OpenAI Realtime API integration
+                    // TODO: Configure Urdu language settings
+                    
+                    // Simulate successful connection for mockup
+                    setTimeout(() => {
+                        updateStatus("Connected. How can I help you today?", "رابطہ ہو گیا۔ آج میں آپ کی کیسے مدد کر سکتا ہوں؟", 'listening');
+                        setControlsState(true);
+                        isListening = true;
+                    }, 2000);
+
+                } catch (error) {
+                    console.error('Connection error:', error);
+                    updateStatus("Connection failed. Please try again.", "رابطہ ناکام۔ دوبارہ کوشش کریں۔", 'error');
+                    setControlsState(false);
+                }
+            }
+
+            async function stopConversation() {
+                try {
+                    updateStatus("Disconnecting...", "رابطہ منقطع کر رہے ہیں...", 'connecting');
+                    
+                    // TODO: Implement WebRTC cleanup
+                    // TODO: Release microphone resources
+                    // TODO: Close OpenAI Realtime session
+                    
+                    if (localStream) {
+                        localStream.getTracks().forEach(track => track.stop());
+                        localStream = null;
+                    }
+
+                    // Simulate disconnection
+                    setTimeout(() => {
+                        updateStatus("Conversation ended. Thank you!", "بات چیت ختم ہوئی۔ شکریہ!", 'idle');
+                        setControlsState(false);
+                        isListening = false;
+                    }, 1000);
+
+                } catch (error) {
+                    console.error('Disconnect error:', error);
+                    updateStatus("Error disconnecting", "رابطہ منقطع کرنے میں خرابی", 'error');
+                }
+            }
+
+            // Event listeners
+            startBtn.addEventListener("click", startConversation);
+            stopBtn.addEventListener("click", stopConversation);
+
+            // Simulate periodic status updates when listening
+            setInterval(() => {
+                if (isListening && Math.random() < 0.1) {
+                    // Simulate AI speaking state occasionally
+                    updateStatus("AI is responding...", "AI جواب دے رہا ہے...", 'speaking');
+                    setTimeout(() => {
+                        if (isListening) {
+                            updateStatus("Listening... Please speak", "سن رہا ہوں... براہ کرم بولیں", 'listening');
+                        }
+                    }, 3000);
+                }
+            }, 5000);
+
+            // Initialize UI
+            updateStatus("Ready to start conversation", "بات چیت شروع کرنے کے لیے تیار", 'idle');
+            setControlsState(false);
+        })();
+    </script>
+</body>
+</html>

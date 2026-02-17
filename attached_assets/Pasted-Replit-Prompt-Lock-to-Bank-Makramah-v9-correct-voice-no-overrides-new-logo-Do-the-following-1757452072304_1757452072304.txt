@@ -1,0 +1,172 @@
+Replit Prompt — “Lock to Bank-Makramah v9 + correct voice, no overrides, new logo”
+
+Do the following exactly:
+
+0) Secrets & constants
+
+In Deployments → Edit commands & secrets → Secrets set:
+
+OPENAI_API_KEY = (project key with balance)
+
+OPENAI_PROMPT_ID = pmpt_68c07732ff008197a9eff98716ccdf2a00251e0b98297e24
+
+OPENAI_PROMPT_VERSION = 9
+
+OPENAI_REALTIME_MODEL = gpt-realtime (match the model the prompt was built with; do not use gpt-4o-realtime-preview if your prompt is on gpt-realtime)
+(If you already had these, keep them. We will read them from env.)
+
+1) Server — create session with prompt v9 (and safe fallback)
+
+Open server.js (or server/routes.ts) and REPLACE the /session handler with this exact logic:
+
+app.post("/session", async (_req, res) => {
+  const headers = {
+    "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+    "Content-Type": "application/json",
+    "OpenAI-Beta": "realtime=v1"
+  };
+
+  // Build request with prompt + explicit version
+  const bodyWithPrompt = {
+    model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime",
+    modalities: ["audio", "text"],                 // required by Realtime
+    turn_detection: { type: "server_vad" },        // proper turn-taking
+    // DO NOT set 'voice' here if your prompt defines voice; let prompt control it
+    prompt: {
+      id: process.env.OPENAI_PROMPT_ID,
+      // some accounts require "version" to pin to your latest (v9)
+      version: process.env.OPENAI_PROMPT_VERSION
+    },
+    // light safety net; won’t override the brand if prompt is applied
+    instructions:
+      "You are Bank Makramah’s Urdu-first voice agent. Keep replies brief and helpful."
+  };
+
+  // Fallback body WITHOUT prompt (in case API build doesn’t accept prompt parameter)
+  const bodyNoPrompt = {
+    ...bodyWithPrompt
+  };
+  delete bodyNoPrompt.prompt;
+
+  try {
+    let r = await fetch("https://api.openai.com/v1/realtime/sessions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(bodyWithPrompt)
+    });
+
+    if (!r.ok) {
+      const errTxt = await r.text();
+      // if prompt not supported, retry without it so the demo never stalls
+      if (/unknown parameter|invalid.*prompt|unsupported.*prompt/i.test(errTxt)) {
+        console.warn("[Realtime] Prompt parameter not accepted; retrying without prompt…");
+        r = await fetch("https://api.openai.com/v1/realtime/sessions", {
+          method: "POST",
+          headers,
+          body: JSON.stringify(bodyNoPrompt)
+        });
+      } else {
+        console.error("[Realtime] Session create failed:", r.status, errTxt);
+        return res.status(r.status).json({ error: "session_create_failed", detail: errTxt });
+      }
+    }
+
+    const j = await r.json();
+    console.log(
+      "[Realtime] OK",
+      "model=", j?.model,
+      "prompt_set=", !!process.env.OPENAI_PROMPT_ID,
+      "version=", process.env.OPENAI_PROMPT_VERSION || "n/a"
+    );
+    return res.json({ client_secret: j.client_secret });
+  } catch (e) {
+    console.error("Session error:", e);
+    return res.status(500).json({ error: "server_error" });
+  }
+});
+
+
+Important:
+
+We do not pass voice here so your prompt’s voice (male Cedar) wins.
+
+If OpenAI rejects the prompt field in your account build, we fallback without prompt but your branding won’t be overridden by frontend (see next step).
+
+2) Frontend — remove all hardcoded brand/instructions overrides
+
+Search project for: BankIslami, UBL, instructions:, systemPrompt, agent instructions, role: "system".
+
+In client code (e.g., client/src/pages/voice-support.tsx, public/app.js):
+
+Delete any code that sends its own assistant/system instructions (anything that still says BankIslami/UBL).
+
+Do not post to any /v1/realtime/events with instructions unless it’s a temporary test ping. Remove test greetings now.
+
+Keep only UI labels (titles/buttons) for branding.
+
+Result: Only the server chooses the prompt/voice; the frontend never overrides it.
+
+3) WebRTC client — keep it stable, no forced greeting
+
+Ensure your client is still:
+
+Posting SDP to https://api.openai.com/v1/realtime?model=${the same env model} with headers
+Authorization: Bearer <ephemeral>, OpenAI-Beta: realtime=v1, Content-Type: application/sdp.
+
+Setting ontrack and autoplay fallback; no initial greeting unless you explicitly toggle a debug flag.
+
+4) Replace the logo image (same size)
+
+Put your new logo file into public/assets/ as bml-logo.png (or whatever filename you have).
+
+Update the header <img> to the new path without changing dimensions. If you use CSS, keep width/height the same:
+
+<img id="bankLogo" src="/assets/bml-logo.png" alt="Bank Makramah" class="logo" />
+
+
+(If the old code imports a React asset, update that import path to the new file; keep width/height classes unchanged.)
+
+5) Colors you requested
+
+Header background: #d5be9e
+
+Primary CTA “Call Bank Makramah”: #d5be9e
+
+Accent text (where you asked): #A0732C
+
+Keep general text black as specified.
+
+Update the CSS where those classes live (e.g., client/src/index.css or client/src/pages/voice-support.module.css) so these values are applied globally.
+
+6) Deploy correctly
+
+Run command: npm start
+
+Health check path: /healthz
+
+Redeploy → Hard refresh deployed URL (Cmd/Ctrl+Shift+R).
+
+7) Sanity checks (2 mins)
+
+Server logs should show:
+[Realtime] OK model= gpt-realtime prompt_set= true version= 9
+
+Network tab:
+
+POST /session → 200
+
+POST /v1/realtime?... → 200
+
+You should hear the male Cedar voice and the agent identifying as Bank Makramah (not Islami/UBL).
+
+If it still says the wrong brand/voice:
+
+You’re likely hitting the fallback (prompt not accepted). In that case, confirm your account/build supports prompt { id, version } for Realtime. If not, set VOICE override explicitly on the server:
+
+// ONLY if your prompt can't be attached in your build:
+bodyNoPrompt.voice = "cedar";  // or whichever exact identifier your prompt uses
+
+
+And put a single line brand guarantee in instructions:
+
+“Always identify as Bank Makramah Customer Support.”

@@ -1,0 +1,422 @@
+ROLE: Senior full-stack engineer.
+GOAL: Create a minimal, production-lean demo web app called “JS Bank Customer Support” that connects the browser to OpenAI Realtime for Urdu speech-in / Urdu speech-out. Use ephemeral Realtime sessions from a tiny Node server; do not expose real API keys in the client. Target Replit.
+References to follow while coding (align behavior & endpoints exactly):
+OpenAI docs: Overview, API Reference (headers, auth, content types). 
+
+
+OpenAI Realtime + WebRTC flow (mint ephemeral key via /v1/realtime/sessions, then POST SDP to /v1/realtime?model=…; send session.update with instructions, turn_detection, input_audio_transcription). You can mirror the structure shown in official and Azure-OpenAI Realtime examples (same concepts/shape for sessions + WebRTC). 
+
+
+Realtime tips: enable input transcription (e.g., whisper-1), use server VAD, send session.update first. 
+
+
+1) Tech/constraints
+Frontend: Vanilla HTML/CSS/JS (no frameworks). Single page:
+
+ Header text: “JS Bank Customer Support” (center).
+
+ Centerpiece: pulsating circle (animated), Start Conversation button beneath.
+
+ On connect: circle glows “live”, label changes to Listening…; add a Stop button.
+
+
+Backend: Node 20 + Express. Endpoint: POST /session → calls https://api.openai.com/v1/realtime/sessions with Bearer OPENAI_API_KEY and returns { client_secret.value, id } to the browser. Never log secrets.
+
+
+Security: Keys only in env (OPENAI_API_KEY, OPENAI_PROMPT_ID). Return only ephemeral token to client. No CORS leakage beyond app origin.
+
+
+Realtime/WebRTC settings:
+
+ Model: "gpt-4o-mini-realtime-preview-2024-12-17" (or current realtime SKU). Voice: "verse" (or a current supported voice). Urdu behavior via session.update:
+
+
+instructions: Answer only in Urdu, bank-support persona.
+
+
+input_audio_transcription: { "model": "whisper-1", "language": "ur" } (to log/display text if needed).
+
+
+turn_detection: { "type": "server_vad", "threshold": 0.5, "prefix_padding_ms": 300, "silence_duration_ms": 400, "create_response": true }.
+
+
+Prompt ID support: If your OpenAI account supports referencing Playground prompts directly, include in the session creation body a prompt object with { "id": process.env.OPENAI_PROMPT_ID }. If you get a 4xx complaining about unknown field, remove it and stick with instructions. (Prompt IDs are officially supported in the Responses/Agents surfaces; Realtime support can lag by account—fallback is fine.) 
+
+
+Accessibility: Button must only start mic after a user gesture. Handle autoplay policies gracefully.
+
+
+2) Project layout
+.
+├─ package.json
+├─ server.js
+├─ .env.example
+├─ public/
+│  ├─ index.html
+│  ├─ styles.css
+│  └─ app.js
+└─ README.md
+3) Files to create (full contents)
+package.json
+{
+  "name": "jsbank-urdu-realtime",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "undici": "^6.19.8"
+  }
+}
+.env.example
+OPENAI_API_KEY=sk-...your-secret...
+OPENAI_PROMPT_ID=pmpt_... (optional)
+PORT=8080
+server.js
+import express from "express";
+import cors from "cors";
+import { config } from "dotenv";
+import { fetch } from "undici";
+
+config();
+
+const app = express();
+app.use(express.json());
+
+// Strict CORS: allow only same origin in Replit
+app.use(cors({
+  origin: (origin, cb) => cb(null, true),
+  credentials: false
+}));
+
+// POST /session -> mint ephemeral token from OpenAI Realtime Sessions
+app.post("/session", async (req, res) => {
+  try {
+    const { model = "gpt-4o-mini-realtime-preview-2024-12-17", voice = "verse" } = req.body || {};
+
+    // Build body for sessions endpoint
+    const body = {
+      model,
+      voice
+    };
+
+    // Optional: include saved prompt if your account supports it
+    if (process.env.OPENAI_PROMPT_ID) {
+      body.prompt = { id: process.env.OPENAI_PROMPT_ID };
+    }
+
+    const r = await fetch("https://api.openai.com/v1/realtime/sessions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!r.ok) {
+      const text = await r.text();
+      console.error("OpenAI sessions error:", text);
+      return res.status(r.status).send(text);
+    }
+
+    const json = await r.json();
+
+    // Return only what the browser needs: the ephemeral key (valid ~1 min) & session id
+    res.json({
+      ephemeralKey: json?.client_secret?.value,
+      sessionId: json?.id
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to mint ephemeral key" });
+  }
+});
+
+app.use(express.static("public"));
+
+const port = process.env.PORT || 8080;
+app.listen(port, () => {
+  console.log(`Server listening on http://localhost:${port}`);
+});
+public/index.html
+<!doctype html>
+<html lang="ur">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>JS Bank Customer Support</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>JS Bank Customer Support</header>
+
+    <main>
+      <div class="agent">
+        <div id="dot" class="pulse"></div>
+        <div id="status" class="status">Click “Start Conversation”</div>
+        <div class="actions">
+          <button id="startBtn">Start Conversation</button>
+          <button id="stopBtn" disabled>Stop</button>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <small>Mic permission required • Urdu only</small>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
+public/styles.css
+:root {
+  --bg: #0b1220;
+  --fg: #f6f7fb;
+  --accent: #00d4ff;
+  --accent2: #7c4dff;
+  --muted: #93a1b0;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: radial-gradient(1200px 800px at 50% -20%, #12203a 0%, #0b1220 50%, #090f1a 100%);
+  color: var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Nastaliq Urdu", "Noto Sans", sans-serif;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+header {
+  text-align: center;
+  padding: 18px 12px;
+  font-weight: 700;
+  letter-spacing: .4px;
+  font-size: 20px;
+}
+
+main { display: grid; place-items: center; padding: 24px; }
+
+.agent { display: grid; place-items: center; gap: 14px; }
+
+.pulse {
+  width: 140px; height: 140px; border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, var(--accent), var(--accent2));
+  box-shadow: 0 0 0 rgba(0, 212, 255, .7);
+  animation: pulse 2s infinite;
+}
+
+.pulse.live { animation: glow 1.6s infinite; }
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(0, 212, 255, .5); transform: scale(1); }
+  70% { box-shadow: 0 0 0 22px rgba(0, 212, 255, 0); transform: scale(1.03); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 212, 255, 0); transform: scale(1); }
+}
+@keyframes glow {
+  0% { filter: drop-shadow(0 0 8px var(--accent)); }
+  50% { filter: drop-shadow(0 0 20px var(--accent2)); }
+  100% { filter: drop-shadow(0 0 8px var(--accent)); }
+}
+
+.status { color: var(--muted); min-height: 20px; }
+
+.actions { display: flex; gap: 12px; }
+button {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #0b1220; border: 0; padding: 10px 14px; border-radius: 999px;
+  font-weight: 700; cursor: pointer;
+}
+button:disabled { opacity: .5; cursor: not-allowed; }
+
+footer { text-align: center; padding: 10px; color: var(--muted); }
+public/app.js
+const startBtn = document.getElementById("startBtn");
+const stopBtn  = document.getElementById("stopBtn");
+const statusEl = document.getElementById("status");
+const dotEl    = document.getElementById("dot");
+
+let pc, dc, localStream, remoteAudioEl;
+
+const MODEL = "gpt-4o-mini-realtime-preview-2024-12-17"; // adjust if needed
+const OPENAI_WEBRTC_URL = (model) => `https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`;
+
+// Helpers
+function setStatus(t) { statusEl.textContent = t; }
+function setLive(isLive) {
+  dotEl.classList.toggle("live", isLive);
+  startBtn.disabled = isLive;
+  stopBtn.disabled  = !isLive;
+}
+
+async function start() {
+  try {
+    setStatus("Requesting microphone…");
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    console.error(err);
+    setStatus("Mic permission denied.");
+    return;
+  }
+
+  // Ask backend for ephemeral key (valid ~1 minute)
+  setStatus("Contacting server…");
+  const sessRes = await fetch("/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: MODEL, voice: "verse" })
+  });
+  if (!sessRes.ok) {
+    const text = await sessRes.text();
+    console.error(text);
+    setStatus("Failed to get session.");
+    return;
+  }
+  const { ephemeralKey } = await sessRes.json();
+  if (!ephemeralKey) {
+    setStatus("No ephemeral key received.");
+    return;
+  }
+
+  // Build WebRTC connection
+  pc = new RTCPeerConnection();
+  // Play remote audio
+  remoteAudioEl = document.createElement("audio");
+  remoteAudioEl.autoplay = true;
+  document.body.appendChild(remoteAudioEl);
+
+  pc.ontrack = (event) => {
+    remoteAudioEl.srcObject = event.streams[0];
+  };
+
+  // Send local mic track
+  const audioTrack = localStream.getAudioTracks()[0];
+  pc.addTrack(audioTrack, localStream);
+
+  // Optional debugging
+  pc.oniceconnectionstatechange = () => setStatus(`ICE: ${pc.iceConnectionState}`);
+
+  // Data channel for Realtime events
+  dc = pc.createDataChannel("oai-events");
+  dc.onopen = () => {
+    setStatus("Connected. Configuring Urdu session…");
+    // Configure the session (instructions, transcription, VAD)
+    const evt = {
+      type: "session.update",
+      session: {
+        instructions:
+          "آپ JS بینک کے کسٹمر سپورٹ ایجنٹ ہیں۔ ہمیشہ شائستہ اردو میں جواب دیں، کم جargon، واضح مرحلہ وار رہنمائی۔ اگر ذاتی معلومات مانگی جائے تو پہلے شناخت کی توثیق کے اصول بتائیں۔",
+        input_audio_transcription: { model: "whisper-1", language: "ur" },
+        turn_detection: {
+          type: "server_vad",
+          threshold: 0.5,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 400,
+          create_response: true,
+          interrupt_response: true
+        }
+      }
+    };
+    dc.send(JSON.stringify(evt));
+    setStatus("Listening… بولیں");
+    setLive(true);
+  };
+
+  dc.onmessage = (evt) => {
+    // You can inspect server events here (e.g., transcriptions)
+    // console.log("Server event:", evt.data);
+  };
+
+  // Create SDP offer
+  const offer = await pc.createOffer({
+    offerToReceiveAudio: true,
+    offerToReceiveVideo: false
+  });
+  await pc.setLocalDescription(offer);
+
+  // Send offer to OpenAI Realtime and set remote answer
+  const sdpRes = await fetch(OPENAI_WEBRTC_URL(MODEL), {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${ephemeralKey}`,
+      "Content-Type": "application/sdp"
+    },
+    body: offer.sdp
+  });
+
+  if (!sdpRes.ok) {
+    const text = await sdpRes.text();
+    console.error("SDP error:", text);
+    setStatus("Failed to negotiate session.");
+    return;
+  }
+
+  const answer = { type: "answer", sdp: await sdpRes.text() };
+  await pc.setRemoteDescription(answer);
+}
+
+async function stop() {
+  try {
+    if (dc && dc.readyState === "open") dc.close();
+    if (pc) pc.close();
+    if (localStream) localStream.getTracks().forEach(t => t.stop());
+  } finally {
+    dc = null; pc = null; localStream = null;
+    setStatus("Disconnected.");
+    setLive(false);
+  }
+}
+
+startBtn.addEventListener("click", start);
+stopBtn.addEventListener("click", stop);
+README.md
+# JS Bank Urdu Live Voice Agent (OpenAI Realtime, WebRTC)
+
+## Quick start (Replit)
+1. Create a new **Node.js Repl**.  
+2. Add Secrets:  
+   - `OPENAI_API_KEY` = your OpenAI key (never commit this)  
+   - `OPENAI_PROMPT_ID` = pmpt_... (optional; remove if sessions reject it)  
+3. Paste files from this repo layout.  
+4. Click **Run** (or `npm run dev`).  
+5. Open the web view, click **Start Conversation**, allow mic.
+
+## Notes
+- We mint a short-lived **ephemeral** Realtime session token on `/session`, then the browser posts its SDP offer to `https://api.openai.com/v1/realtime?model=...` with `Authorization: Bearer <ephemeralKey>`.
+- We send a `session.update` to force **Urdu**, enable **Whisper** transcription (ur), and **server VAD** for natural turns.
+- Keep your real API key only on the server; never in client code.
+
+## Troubleshooting
+- 401/403 on SDP post → your ephemeral token likely expired (valid ≈ 1 min). Re-click Start.  
+- No audio → ensure mic permission granted; some browsers need user gesture before audio playback.  
+- If `/session` returns 400 about unknown field `prompt`, remove `prompt` support and rely on `instructions`.
+4) Behavior/acceptance tests
+Landing page shows “JS Bank Customer Support” header, pulsating circle, Start Conversation button.
+
+
+On click, browser asks for mic; when connected the status shows “Listening… بولیں” and voice replies in Urdu.
+
+
+Stop ends the session and mic track.
+
+
+5) Why this matches the docs
+Auth & API surface: We use standard API auth headers from the OpenAI API reference; backend mints a Realtime session with POST /v1/realtime/sessions and returns only the ephemeral token to the browser. 
+
+
+WebRTC flow: Browser creates an SDP offer and posts it to the Realtime endpoint; sets the returned SDP answer on the peer connection. The initial session.update configures Urdu instructions, transcription, and VAD — patterns reflected in official/preview guides. 
+
+
+Transcription & VAD knobs: input_audio_transcription and turn_detection are documented session fields so you can get smooth, natural turns and optional text transcripts. 
+
+
+Prompt management: OpenAI Playground Prompt IDs are supported in Responses/Agents; some accounts may accept a prompt object in session creation as that feature rolls out. The code is defensive: it tries it if present and gracefully works without it. 
+
+

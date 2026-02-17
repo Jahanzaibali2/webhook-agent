@@ -1,0 +1,331 @@
+Replit Prompt — Fix Mobile Connection (iOS/Android), Make It Talk, and Stop Silent Fails
+
+Goals
+
+Mobile “Connection Error” → gone (robust WebRTC on iOS/Android).
+
+Realtime session created reliably (retries, quota/401 handling).
+
+Audio plays on mobile (autoplay/iOS gesture fixes).
+
+Agent replies with voice (no transcription needed).
+
+Clear, granular status logs to debug if anything fails on stage.
+
+0) Secrets & deploy (re-check)
+
+In Deploy → Edit commands & secrets → Secrets set:
+
+OPENAI_API_KEY = project key with balance
+
+OPENAI_REALTIME_MODEL = gpt-realtime (must match your prompt’s model)
+
+(Optional) OPENAI_PROMPT_ID, OPENAI_PROMPT_VERSION if your account build supports prompts in Realtime.
+Run command: npm start • Health check: /healthz • Redeploy after changes.
+
+1) Server: stable session mint + CORS + health
+
+Edit server.js (or server/routes.ts):
+
+import express from "express";
+import cors from "cors";
+import { fetch } from "undici";
+
+const app = express();
+app.use(cors({ origin: true, credentials: true })); // mobile friendly
+app.use(express.json());
+app.use(express.static("public"));
+
+app.get("/healthz", (_req, res) => res.status(200).send("ok"));
+
+// Build session payload (modalities MUST include text)
+function buildBody(withPrompt = true) {
+  const body = {
+    model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime",
+    modalities: ["audio", "text"],
+    turn_detection: { type: "server_vad" },
+    // Let prompt define voice. Only set 'voice' if prompt isn’t used.
+    instructions:
+      "You are Bank Makramah’s Urdu-first voice agent. Keep replies brief and helpful."
+  };
+  if (withPrompt && process.env.OPENAI_PROMPT_ID) {
+    body.prompt = {
+      id: process.env.OPENAI_PROMPT_ID,
+      version: process.env.OPENAI_PROMPT_VERSION
+    };
+  }
+  return body;
+}
+
+// Robust ephemeral session creator with retry/backoff
+app.post("/session", async (_req, res) => {
+  const url = "https://api.openai.com/v1/realtime/sessions";
+  const headers = {
+    "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+    "Content-Type": "application/json",
+    "OpenAI-Beta": "realtime=v1"
+  };
+
+  const tryOnce = async (withPrompt) =>
+    fetch(url, { method: "POST", headers, body: JSON.stringify(buildBody(withPrompt)) });
+
+  try {
+    let r = await tryOnce(true);
+    let text = await r.text();
+
+    // Handle prompt unsupported / rate limit / auth
+    if (!r.ok) {
+      if (/unknown parameter|invalid.*prompt|unsupported.*prompt/i.test(text)) {
+        console.warn("[Realtime] Prompt not accepted; retrying without prompt…");
+        r = await tryOnce(false);
+        text = await r.text();
+      }
+    }
+    if (!r.ok) {
+      console.error("[Realtime] session failed:", r.status, text);
+      return res.status(r.status).json({ error: "session_create_failed", detail: text });
+    }
+
+    const json = JSON.parse(text);
+    console.log("[Realtime] OK", "model=", json?.model, "prompt_set=", !!process.env.OPENAI_PROMPT_ID);
+    return res.json({ client_secret: json.client_secret });
+  } catch (e) {
+    console.error("Session error:", e);
+    return res.status(500).json({ error: "server_error" });
+  }
+});
+
+const port = process.env.PORT || 8080;
+app.listen(port, "0.0.0.0", () =>
+  console.log(`Server on :${port}`, "| model:", process.env.OPENAI_REALTIME_MODEL)
+);
+
+2) Client: mobile WebRTC hardening (iOS/Android), autoplay, ICE, talk-first safeguard
+
+Edit public/app.js (or your connect file) and replace the connect block with this hardened version:
+
+const startBtn = document.getElementById("startBtn");
+const stopBtn  = document.getElementById("stopBtn");
+const statusEl = document.getElementById("status");
+const orbEl    = document.getElementById("dot");
+
+let pc, micStream, remoteAudio, dc, token;
+
+function setStatus(s){ statusEl.textContent = s; }
+function setOrb(state){
+  ["idle","connecting","listening","speaking","error"].forEach(c => orbEl.classList.remove(c));
+  if (state) orbEl.classList.add(state);
+}
+
+// iOS autoplay: create audio element on user gesture
+function prepareAudioElement() {
+  remoteAudio = new Audio();
+  remoteAudio.autoplay = true;
+  remoteAudio.playsInline = true;
+  // Attempt to unlock audio immediately on click
+  const p = remoteAudio.play();
+  if (p && typeof p.catch === "function") {
+    p.catch(() => {
+      document.body.addEventListener("touchstart", () => remoteAudio.play(), { once:true });
+      document.body.addEventListener("click",      () => remoteAudio.play(), { once:true });
+    });
+  }
+}
+
+async function getEphemeral(retries = 2) {
+  for (let i=0;i<=retries;i++){
+    const r = await fetch("/session", { method:"POST" });
+    const t = await r.text();
+    if (r.ok) {
+      const j = JSON.parse(t);
+      return j.client_secret?.value || j.client_secret;
+    }
+    // Retry on 429/5xx
+    if (r.status === 429 || r.status >= 500) {
+      await new Promise(rs => setTimeout(rs, 600 * (i+1)));
+      continue;
+    }
+    throw new Error(`/session ${r.status}: ${t}`);
+  }
+  throw new Error("Failed to mint ephemeral token (retries exceeded)");
+}
+
+async function startCall() {
+  try {
+    setStatus("Requesting mic…"); setOrb("connecting");
+    startBtn.disabled = true; stopBtn.disabled = false;
+
+    prepareAudioElement();
+
+    // iOS mic constraints tuned for clarity
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+
+    token = await getEphemeral();
+
+    // Add STUN for mobile/NATs
+    pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    });
+
+    // Diagnostics (shows where it fails on mobile)
+    pc.oniceconnectionstatechange = () => {
+      console.log("ICE:", pc.iceConnectionState);
+      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+        setStatus("Network issue (ICE). Retrying may help."); setOrb("error");
+      }
+    };
+    pc.onconnectionstatechange = () => {
+      console.log("PC:", pc.connectionState);
+    };
+
+    // Receive model audio
+    pc.addTransceiver("audio", { direction: "recvonly" });
+    pc.ontrack = (e) => {
+      console.log("ontrack: got audio");
+      if (!remoteAudio) prepareAudioElement();
+      remoteAudio.srcObject = e.streams[0];
+      const p = remoteAudio.play();
+      if (p && typeof p.catch === "function") {
+        p.catch(() => {
+          setStatus("Tap anywhere to enable audio ▶︎");
+          document.body.addEventListener("touchstart", () => remoteAudio.play(), { once:true });
+          document.body.addEventListener("click",      () => remoteAudio.play(), { once:true });
+        });
+      }
+      setStatus("Live"); setOrb("listening");
+    };
+
+    // Send mic
+    micStream.getAudioTracks().forEach(t => pc.addTrack(t, micStream));
+
+    // Data channel for events & a one-time “speak now” nudge if silence > 5s
+    dc = pc.createDataChannel("oai-events");
+    dc.onopen = () => {
+      console.log("DC open");
+      setTimeout(() => {
+        if (dc?.readyState === "open") {
+          try {
+            dc.send(JSON.stringify({
+              type: "response.create",
+              response: { modalities: ["audio"], instructions: "جی! بولیے—میں سن رہا ہوں۔" }
+            }));
+          } catch {}
+        }
+      }, 5000); // only once if totally silent
+    };
+    dc.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg?.type) console.log("RTC Event:", msg.type, msg);
+      } catch { console.log("RTC:", evt.data); }
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    // IMPORTANT: SDP with proper headers
+    const resp = await fetch(`https://api.openai.com/v1/realtime?model=${encodeURIComponent("gpt-realtime")}`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "OpenAI-Beta": "realtime=v1",
+        "Content-Type": "application/sdp"
+      },
+      body: offer.sdp
+    });
+
+    if (!resp.ok) {
+      const txt = await resp.text();
+      console.error("Realtime SDP fail:", resp.status, txt);
+      const msg = resp.status === 401 || resp.status === 403
+        ? "Auth error (key/project)."
+        : resp.status === 429
+          ? "OpenAI rate/quota limit."
+          : "Realtime connect failed.";
+      setStatus(msg); setOrb("error");
+      startBtn.disabled = false; stopBtn.disabled = true;
+      return;
+    }
+
+    const answerSDP = await resp.text();
+    await pc.setRemoteDescription({ type: "answer", sdp: answerSDP });
+    setStatus("Live"); setOrb("listening");
+    console.log("Realtime connected.");
+  } catch (e) {
+    console.error("startCall error:", e);
+    setStatus(e.message || "Error connecting"); setOrb("error");
+    startBtn.disabled = false; stopBtn.disabled = true;
+  }
+}
+
+function stopCall(){
+  try{
+    if (pc) pc.close();
+    if (micStream) micStream.getTracks().forEach(t => t.stop());
+    if (remoteAudio) { remoteAudio.pause(); remoteAudio.srcObject = null; }
+  } catch {}
+  pc = micStream = remoteAudio = dc = null;
+  setStatus("Conversation ended. Thank you!"); setOrb("idle");
+  startBtn.disabled = false; stopBtn.disabled = true;
+}
+
+startBtn.addEventListener("click", startCall, { passive: true });
+stopBtn.addEventListener("click", stopCall, { passive: true });
+setOrb("idle"); setStatus("• Ready to connect");
+
+
+Why this fixes mobile:
+
+STUN server improves NAT traversal (common reason for mobile “connection error”).
+
+Autoplay unlock (create/play audio on user gesture) fixes iOS silence.
+
+DataChannel nudge sends a one-time “speak now” if the room is quiet and VAD hasn’t turned.
+
+Retryable /session prevents transient 429/5xx causing “connected → error” loops.
+
+ICE/PC logs tell you exactly where it dies if the network is restrictive.
+
+3) UI status: show real reasons, not just “Connection Error”
+
+Add a small legend (optional) under the status to display:
+
+“Auth error (key/project)” → fix OPENAI_API_KEY / deployment secrets
+
+“OpenAI rate/quota limit.” → add credit / slow retries
+
+“Network issue (ICE). Retrying may help.” → user network conditions
+
+4) Redeploy and test on mobile
+
+Redeploy (Run cmd npm start, Health /healthz).
+
+On iPhone/Android:
+
+Load page, tap Call (this is your “gesture”).
+
+Allow mic. You should hear voice within a few seconds.
+
+If UI says Auth error → wrong project key in deployment secrets.
+
+If quota limit → top up (you already did).
+
+If ICE repeatedly → try another network (carrier/NAT issue), or add TURN later.
+
+5) If a carrier/Wi-Fi still blocks it
+
+Add a TURN server (managed service) in RTCPeerConnection({ iceServers: [...] }):
+
+pc = new RTCPeerConnection({
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    // Example TURN (replace with your creds)
+    // { urls: "turn:turn.yourdomain.com:3478", username: "user", credential: "pass" }
+  ]
+});

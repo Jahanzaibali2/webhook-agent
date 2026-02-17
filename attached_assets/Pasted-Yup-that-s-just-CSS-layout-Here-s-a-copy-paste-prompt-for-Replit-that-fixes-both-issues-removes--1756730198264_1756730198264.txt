@@ -1,0 +1,69 @@
+Yup — that’s just CSS/layout. Here’s a copy-paste prompt for Replit that fixes both issues:
+removes the weird blue “band” behind the header
+
+
+kills the extra white space at the bottom (footer sticks to bottom)
+
+
+keeps all JS/WebRTC logic untouched
+
+
+
+⬇️ Replit Prompt — Fix header band + bottom white gap
+Role: Frontend dev.
+Goal: Update public/styles.css (and tiny HTML tweak) so the header is a solid UBL blue bar with no background bleed, and the page fills the viewport with no extra white at the bottom. Do not change IDs (dot, status, startBtn, stopBtn).
+1) Edit 
+public/styles.css
+A. Normalize the page height/layout
+Replace your html, body and body blocks with this:
+html, body {
+  height: 100%;
+}
+
+body{
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;   /* footer sticks to bottom */
+  color: var(--neutral);
+  /* Remove/replace any gradients that might bleed behind header */
+  background: var(--bg);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", sans-serif;
+}
+
+/* Main grows to fill, footer stays at bottom */
+main { flex: 1 0 auto; }
+.site-footer { flex: 0 0 auto; }
+If you previously had a radial gradient on body, remove it (that’s what causes the header “discolor” band to peek behind).
+B. Card + page background (optional, but keeps it clean)
+If you want that clean airy feel, keep cards but avoid page stripes:
+:root{
+  --bg: #F5F7FB;    /* slightly brighter than before */
+  /* keep your existing color vars for buttons/orb */
+}
+
+/* Card stays white with subtle shadow */
+.card{
+  background:#ffffff;
+  border:1px solid rgba(13,27,42,0.08);
+  border-radius:16px;
+  padding:28px;
+  display:grid; place-items:center; gap:12px;
+  box-shadow: 0 10px 30px rgba(10,103,178,0.06);
+}
+If you want to keep a radial accent elsewhere (not behind the header), you can add it inside main only, e.g. .hero{ background: radial-gradient(...); } — but keep body{ background: var(--bg); }.
+
+2) (Optional) Tiny HTML tidy
+Open public/index.html and make sure the order is:
+<body>
+  <header class="ubl-header"> ... </header>
+  <main> ... </main>
+  <footer class="site-footer"> ... </footer>
+</body>
+No extra wrappers above <header>. If you had any decorative “top band” element before the header, remove it.
+
+3) Keep functionality intact
+No JS changes needed. The IDs stay the same; the realtime agent will keep working.
+
+If anything still looks off after this, send me a fresh screenshot and I’ll pinpoint the exact selector that’s bleeding through.
+

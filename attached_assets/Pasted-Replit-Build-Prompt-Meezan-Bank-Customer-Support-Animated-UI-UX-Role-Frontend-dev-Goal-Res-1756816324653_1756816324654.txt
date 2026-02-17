@@ -1,0 +1,360 @@
+Replit Build Prompt — “Meezan Bank Customer Support” (Animated UI/UX)
+
+Role: Frontend dev.
+Goal: Restyle the existing web app to Meezan Bank’s brand with elegant animations and RTL Urdu support. Do not change the realtime logic. Keep the element IDs: dot, startBtn, stopBtn, status.
+
+⸻
+
+0) Assets & setup
+	1.	Add the logo file you shared as: public/meezan-logo.png
+	2.	(Optional) Favicon: create a simple purple circle with white “MB” and save as public/favicon-meezan.png.
+
+⸻
+
+1) Replace public/index.html
+	•	Keep your <script src="app.js"></script> and your backend /session endpoint.
+	•	Replace the entire file contents with this (IDs preserved):
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>Meezan Bank Customer Support</title>
+    <link rel="icon" href="favicon-meezan.png"/>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css"/>
+  </head>
+  <body>
+    <!-- Sticky Header -->
+    <header class="mb-header">
+      <div class="header-inner">
+        <img src="meezan-logo.png" alt="Meezan Bank" class="logo"/>
+        <div class="brand">
+          <div class="title">Meezan Bank Customer Support</div>
+          <div class="subtitle urdu" dir="rtl" lang="ur">آواز کے ذریعے کسٹمر سپورٹ</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main -->
+    <main>
+      <section class="container">
+        <!-- Intro Panel -->
+        <aside class="intro card">
+          <p class="hello">Hello,</p>
+          <h1 class="question">
+            How May <span class="gold-underline">We Help</span> You?
+          </h1>
+          <div class="chips">
+            <span class="chip">Balance</span><span class="chip">Card Block</span>
+            <span class="chip">Loan</span><span class="chip">Branch Hours</span>
+            <span class="chip">Meezan Asaan</span>
+          </div>
+          <div class="motif">
+            <span class="dot purple"></span>
+            <span class="dot gold"></span>
+          </div>
+        </aside>
+
+        <!-- Agent Card -->
+        <section class="agent card">
+          <!-- Animated CALL orb (keep id="dot") -->
+          <div id="dot" class="orb idle" aria-hidden="true">
+            <!-- phone icon -->
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 2l3 3-2 2c1.2 2.6 3.4 4.8 6 6l2-2 3 3-2 3c-6 1-13-6-12-12l3-2z"
+                    stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <!-- listening ripples -->
+            <span class="ripple r1"></span>
+            <span class="ripple r2"></span>
+            <span class="ripple r3"></span>
+          </div>
+
+          <h2 class="headline">Click “Call Meezan” to talk to Customer Support</h2>
+          <p class="helper urdu" dir="rtl" lang="ur">
+            کسٹمر سپورٹ سے بات کرنے کے لیے "Call Meezan" دبائیں
+          </p>
+
+          <div class="actions">
+            <button id="startBtn" class="btn primary">
+              <span class="spinner" aria-hidden="true"></span>
+              <span>Call Meezan</span>
+            </button>
+            <button id="stopBtn" class="btn ghost" disabled>Stop</button>
+          </div>
+
+          <div id="status" class="status" role="status" aria-live="polite">• Ready to connect</div>
+
+          <!-- Optional subtitles (collapsed by default) -->
+          <details class="subs">
+            <summary>Show subtitles</summary>
+            <div class="subs-body">
+              <!-- examples; your JS can append real lines here later -->
+              <div class="bubble urdu r" dir="rtl" lang="ur">مجھے بیلنس بتائیں</div>
+              <div class="bubble l">For security, please confirm your last 4 digits…</div>
+            </div>
+          </details>
+        </section>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mb-footer">
+      Microphone permission required • Urdu language support
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
+
+
+⸻
+
+2) Replace public/styles.css
+	•	Premium Meezan theme, phone-orb animations, responsive layout, sticky header, footer pinned.
+	•	Paste the entire stylesheet below:
+
+/* ========== Meezan Bank Theme ========== */
+:root{
+  --purple: #6D1A6B;
+  --deep:   #501050;
+  --gold:   #C5A545;
+  --green:  #0A8A3A;
+
+  --bg:     #F6F5F8;
+  --card:   #FFFFFF;
+  --text:   #1B1B1B;
+  --muted:  #8C8C8C;
+  --border: rgba(0,0,0,.08);
+
+  --shadow-card: 0 10px 30px rgba(80,16,80,.08);
+}
+
+*{ box-sizing:border-box; }
+html, body{ height:100%; }
+body{
+  margin:0; min-height:100vh;
+  display:flex; flex-direction:column;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", sans-serif;
+  color:var(--text); background:var(--bg);
+}
+
+/* ---------- Header ---------- */
+.mb-header{
+  position:sticky; top:0; z-index:100;
+  background:var(--deep);
+  box-shadow: 0 2px 10px rgba(0,0,0,.06);
+}
+.header-inner{
+  height:64px; max-width:1160px; margin:0 auto;
+  display:flex; align-items:center; gap:14px; padding:0 18px;
+}
+.logo{ height:36px; width:auto; object-fit:contain; }
+.brand .title{
+  color:#fff; font-weight:800; font-size:18px; letter-spacing:.2px;
+}
+.subtitle{ color:rgba(255,255,255,.9); font-size:12px; margin-top:2px; }
+.urdu{ font-family:"Noto Nastaliq Urdu", serif; }
+
+/* ---------- Layout ---------- */
+main{ flex:1 0 auto; }
+.container{
+  max-width:1160px; margin:24px auto; padding:0 18px;
+  display:grid; grid-template-columns:1fr 1fr; gap:24px;
+}
+@media (max-width:1024px){
+  .container{ grid-template-columns:1fr; }
+}
+
+/* ---------- Card ---------- */
+.card{
+  background:var(--card); border:1px solid var(--border);
+  border-radius:20px; padding:24px; box-shadow:var(--shadow-card);
+}
+
+/* ---------- Intro Panel ---------- */
+.hello{ color:var(--purple); font-weight:700; margin:0 0 6px; }
+.question{
+  margin:0 0 12px; font-weight:800; font-size:40px; line-height:1.06; color:var(--text);
+}
+.gold-underline{
+  text-decoration: underline; text-decoration-color: var(--gold); text-decoration-thickness: 3px;
+}
+.chips{ display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
+.chip{
+  font-size:13px; padding:8px 12px; border-radius:999px;
+  background:#fff; border:1px solid var(--border); color:#333;
+}
+.motif{ margin-top:18px; display:flex; gap:10px; align-items:center; }
+.dot{ width:14px; height:14px; border-radius:50%; display:inline-block; }
+.dot.purple{ background:var(--purple); }
+.dot.gold{ background:var(--gold); }
+
+/* ---------- Agent Card ---------- */
+.agent{ display:grid; place-items:center; gap:10px; text-align:center; }
+.headline{ font-size:20px; font-weight:800; margin:6px 0 2px; }
+.helper{ color:var(--muted); }
+
+/* Buttons */
+.actions{ display:flex; gap:12px; }
+.btn{
+  border:0; border-radius:999px; padding:12px 18px;
+  font-weight:700; cursor:pointer; display:inline-flex; gap:8px; align-items:center;
+}
+.btn.primary{
+  background: linear-gradient(135deg, var(--deep), var(--purple));
+  color:#fff; box-shadow:0 8px 18px rgba(109,26,107,.18);
+}
+.btn.primary:hover{ filter:brightness(1.05); transform: translateY(-1px); }
+.btn.primary:active{ transform: translateY(0); }
+.btn.ghost{
+  background:#fff; color:#333; border:1px solid var(--border);
+}
+.btn:disabled{ opacity:.5; cursor:not-allowed; }
+
+/* Status */
+.status{ color:var(--muted); font-size:14px; }
+
+/* Subtitles */
+.subs{ margin-top:6px; text-align:left; width:100%; }
+.subs summary{ cursor:pointer; color:#333; }
+.subs-body{
+  margin-top:8px; max-height:160px; overflow:auto; display:grid; gap:8px;
+}
+.bubble{
+  display:inline-block; padding:10px 12px; border-radius:14px; font-size:14px;
+}
+.bubble.l{ background:#fff; border:1px solid var(--border); color:#333; }
+.bubble.r{ background:#EFE7F0; color:#2b2432; }
+
+/* ---------- ORB (CALL) ---------- */
+.orb{
+  position:relative;
+  width:160px; height:160px; border-radius:50%;
+  display:grid; place-items:center;
+  background: radial-gradient(circle at 35% 30%, var(--purple), var(--deep));
+  box-shadow: 0 12px 24px rgba(109,26,107,.22);
+  will-change: transform, box-shadow, filter;
+}
+.orb svg{ opacity:.95; }
+
+/* Ambient pulse */
+@keyframes orbPulse{
+  0%   { transform: scale(1);   box-shadow: 0 0 0 0 rgba(109,26,107,.22); }
+  70%  { transform: scale(1.03);box-shadow: 0 0 0 22px rgba(109,26,107,0); }
+  100% { transform: scale(1);   box-shadow: 0 0 0 0 rgba(109,26,107,0); }
+}
+.orb.idle{ animation: orbPulse 2s infinite; }
+
+/* Speaking sweep */
+@keyframes sweep{
+  0%{ filter:hue-rotate(0deg) brightness(1); }
+  100%{ filter:hue-rotate(360deg) brightness(1); }
+}
+.orb.speaking{
+  animation: orbPulse 2s infinite, sweep 25s linear infinite;
+}
+
+/* Connecting wobble */
+@keyframes wobble{
+  0%,100%{ transform: scale(1); }
+  50%{ transform: scale(1.04); }
+}
+.orb.connecting{ animation: wobble 1.2s infinite; }
+
+/* Error shake */
+@keyframes shakeX{
+  0%,100%{ transform: translateX(0); }
+  25%{ transform: translateX(-3px); }
+  50%{ transform: translateX(3px); }
+  75%{ transform: translateX(-2px); }
+}
+.orb.error{ animation: shakeX .25s ease-in-out, orbPulse 2s infinite; }
+
+/* Listening ripples */
+.ripple{
+  position:absolute; inset:0; border-radius:50%; border:2px solid rgba(255,255,255,.5);
+  opacity:0; pointer-events:none;
+}
+@keyframes ripple{
+  0%{ transform:scale(1); opacity:.35; }
+  100%{ transform:scale(1.5); opacity:0; }
+}
+.orb.listening .ripple{ animation: ripple 1.4s ease-out infinite; }
+.orb.listening .r1{ animation-delay:0s; }
+.orb.listening .r2{ animation-delay:.35s; }
+.orb.listening .r3{ animation-delay:.7s; }
+
+/* ---------- Footer ---------- */
+.mb-footer{
+  flex:0 0 auto;
+  text-align:center; padding:10px;
+  border-top:1px solid var(--border); background:#fff; color:var(--muted);
+}
+
+/* ---------- Accessibility ---------- */
+@media (prefers-reduced-motion: reduce){
+  *{ animation:none !important; transition:none !important; }
+}
+
+
+⸻
+
+3) (Optional) Enhance public/app.js with state classes (no logic changes)
+
+This only adds/toggles CSS classes on the orb and keeps your existing functions.
+Find where you already set status/live, and add these helpers near the top:
+
+// Add below your existing consts (dotEl already exists in your app)
+function setOrbState(state){
+  // states: 'idle' | 'connecting' | 'listening' | 'speaking' | 'error'
+  const states = ['idle','connecting','listening','speaking','error'];
+  states.forEach(s => dotEl.classList.remove(s));
+  if (state) dotEl.classList.add(state);
+}
+
+Then sprinkle these in your existing flow (examples):
+	•	After user clicks Start and before SDP is posted:
+
+setOrbState('connecting');
+
+	•	Once the data channel opens and you send session.update (ready to talk):
+
+setOrbState('listening');
+
+	•	If you detect the agent is speaking (optional hook if you parse events):
+
+setOrbState('speaking');
+
+	•	On normal stop/disconnect:
+
+setOrbState('idle');
+
+	•	On error/ICE failure:
+
+setOrbState('error');
+
+If you don’t have event hooks, it’s still fine—connecting → listening on connect already makes it feel alive.
+
+⸻
+
+4) What stays unchanged (so nothing breaks)
+	•	Keep IDs exactly: dot, status, startBtn, stopBtn.
+	•	Keep app.js WebRTC + /session logic as-is (only optional class toggles added).
+	•	No backend changes required.
+
+⸻
+
+5) Acceptance checklist
+	•	Sticky deep-purple header with Meezan logo and EN/UR titles.
+	•	Centered Agent card with animated phone orb (not a mic), elegant ripple/sweep animations.
+	•	Primary button: Call Meezan (purple gradient), Secondary: Stop (ghost).
+	•	Status line updates readable; Urdu text in Nastaliq with RTL.
+	•	Clean, airy background; white cards; tasteful gold underline accent; no stray bands/gaps.
+	•	Fully responsive; keyboard focus states visible; reduced-motion respected.
+
+⸻
+

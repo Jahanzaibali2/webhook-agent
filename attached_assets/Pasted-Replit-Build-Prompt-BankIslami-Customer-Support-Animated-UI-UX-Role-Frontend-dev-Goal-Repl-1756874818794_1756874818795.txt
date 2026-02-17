@@ -1,0 +1,315 @@
+Replit Build Prompt — “BankIslami Customer Support” (Animated UI/UX)
+
+Role: Frontend dev.
+Goal: Replace the current UI with a premium BankIslami-themed interface (Urdu voice calling). Keep IDs and JS logic intact.
+
+⸻
+
+0) Assets
+	1.	Save the logo you shared as: public/bankislami-logo.png
+	2.	(Optional) Favicon: public/favicon-bi.png (white crescent/minaret on dark blue).
+
+⸻
+
+1) Replace public/index.html
+
+Paste this file (keep your app.js and backend as is):
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>BankIslami Customer Support</title>
+    <link rel="icon" href="favicon-bi.png"/>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css"/>
+  </head>
+  <body>
+    <!-- Sticky dark-blue header -->
+    <header class="bi-header">
+      <div class="header-inner">
+        <img src="bankislami-logo.png" alt="BankIslami" class="logo"/>
+        <div class="brand">
+          <div class="title">BankIslami Customer Support</div>
+          <div class="subtitle urdu" dir="rtl" lang="ur">آواز کے ذریعے کسٹمر سپورٹ</div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="container">
+        <!-- Left: Intro panel with BankIslami vibe -->
+        <aside class="intro card">
+          <p class="hello">Hello,</p>
+          <h1 class="question">How May <span class="lime-underline">We Help</span> You?</h1>
+          <p class="muted">Quick actions</p>
+          <div class="chips">
+            <span class="chip">Balance</span>
+            <span class="chip">Card Block</span>
+            <span class="chip">Financing</span>
+            <span class="chip">Branch Hours</span>
+            <span class="chip">Internet Banking</span>
+          </div>
+          <div class="motif">
+            <span class="dot blue"></span>
+            <span class="dot green"></span>
+          </div>
+        </aside>
+
+        <!-- Right: Agent card (IDs preserved) -->
+        <section class="agent card">
+          <!-- Animated CALL orb -->
+          <div id="dot" class="orb idle" aria-hidden="true">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 2l3 3-2 2c1.2 2.6 3.4 4.8 6 6l2-2 3 3-2 3c-6 1-13-6-12-12l3-2z"
+                    stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="ripple r1"></span>
+            <span class="ripple r2"></span>
+            <span class="ripple r3"></span>
+          </div>
+
+          <h2 class="headline">Click “Call BankIslami” to talk to Customer Support</h2>
+          <p class="helper urdu" dir="rtl" lang="ur">کسٹمر سپورٹ سے بات کرنے کے لیے "Call BankIslami" دبائیں</p>
+
+          <div class="actions">
+            <button id="startBtn" class="btn primary">
+              <span class="spinner" aria-hidden="true"></span>
+              <span>Call BankIslami</span>
+            </button>
+            <button id="stopBtn" class="btn ghost" disabled>Stop</button>
+          </div>
+
+          <div id="status" class="status" role="status" aria-live="polite">• Ready to connect</div>
+
+          <details class="subs">
+            <summary>Show subtitles</summary>
+            <div class="subs-body">
+              <div class="bubble urdu r" dir="rtl" lang="ur">مجھے بیلنس بتائیں</div>
+              <div class="bubble l">For security, please confirm your last 4 digits…</div>
+            </div>
+          </details>
+        </section>
+      </section>
+    </main>
+
+    <footer class="bi-footer">
+      Microphone permission required • Urdu language support
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
+
+
+⸻
+
+2) Replace public/styles.css
+
+BankIslami palette (dark-blue header + lime-green accent), premium cards, animations:
+
+/* ===== BankIslami Theme ===== */
+:root{
+  /* Brand */
+  --blue:  #0D3A67;   /* dark header/nav blue */
+  --blue2: #1F5AA6;   /* secondary blue / gradients */
+  --green: #79BE43;   /* BankIslami lime accent */
+  --green-deep: #5CA529;
+
+  /* UI */
+  --bg:    #F5F8FD;   /* airy page bg */
+  --card:  #FFFFFF;
+  --text:  #0F1B2D;
+  --muted: #8AA0B3;
+  --border: rgba(0,0,0,.08);
+
+  --shadow-card: 0 10px 30px rgba(13,58,103,.10);
+}
+
+*{ box-sizing:border-box; }
+html, body{ height:100%; }
+body{
+  margin:0; min-height:100vh; display:flex; flex-direction:column;
+  background:var(--bg); color:var(--text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", sans-serif;
+}
+
+/* Header */
+.bi-header{
+  position:sticky; top:0; z-index:100;
+  background:var(--blue);
+  box-shadow:0 2px 10px rgba(0,0,0,.06);
+}
+.header-inner{
+  height:66px; max-width:1160px; margin:0 auto;
+  display:flex; align-items:center; gap:14px; padding:0 18px;
+}
+.logo{ height:36px; width:auto; object-fit:contain; }
+.brand .title{ color:#fff; font-weight:800; font-size:18px; letter-spacing:.2px; }
+.subtitle{ color:rgba(255,255,255,.9); font-size:12px; margin-top:2px; }
+.urdu{ font-family:"Noto Nastaliq Urdu", serif; }
+
+/* Layout */
+main{ flex:1 0 auto; }
+.container{
+  max-width:1160px; margin:24px auto; padding:0 18px;
+  display:grid; grid-template-columns:1fr 1fr; gap:24px;
+}
+@media (max-width:1024px){ .container{ grid-template-columns:1fr; } }
+
+/* Cards */
+.card{
+  background:var(--card); border:1px solid var(--border);
+  border-radius:20px; padding:24px; box-shadow:var(--shadow-card);
+}
+
+/* Intro panel */
+.hello{ color:var(--blue2); font-weight:700; margin:0 0 6px; }
+.question{ margin:0 0 10px; font-weight:800; font-size:40px; line-height:1.06; color:var(--text); }
+.lime-underline{ text-decoration:underline; text-decoration-color:var(--green); text-decoration-thickness:3px; }
+.muted{ color:var(--muted); margin:4px 0 8px; }
+.chips{ display:flex; flex-wrap:wrap; gap:10px; }
+.chip{
+  font-size:13px; padding:8px 12px; border-radius:999px;
+  background:#fff; border:1px solid var(--border); color:#2d3a4a;
+}
+.motif{ margin-top:16px; display:flex; gap:10px; align-items:center; }
+.dot{ width:14px; height:14px; border-radius:50%; }
+.dot.blue{ background:var(--blue2); }
+.dot.green{ background:var(--green); }
+
+/* Agent card */
+.agent{ display:grid; place-items:center; gap:10px; text-align:center; }
+.headline{ font-size:20px; font-weight:800; margin:6px 0 2px; }
+.helper{ color:var(--muted); }
+
+/* Buttons */
+.actions{ display:flex; gap:12px; }
+.btn{
+  border:0; border-radius:999px; padding:12px 18px;
+  font-weight:700; cursor:pointer; display:inline-flex; gap:8px; align-items:center;
+}
+.btn.primary{
+  background:linear-gradient(135deg, var(--blue2), var(--blue));
+  color:#fff; box-shadow:0 8px 18px rgba(31,90,166,.18);
+}
+.btn.primary:hover{ filter:brightness(1.05); transform:translateY(-1px); }
+.btn.primary:active{ transform:translateY(0); }
+.btn.ghost{
+  background:#fff; color:#2d3a4a; border:1px solid var(--border);
+}
+.btn:disabled{ opacity:.5; cursor:not-allowed; }
+
+/* Status */
+.status{ color:var(--muted); font-size:14px; }
+
+/* Subtitles */
+.subs{ margin-top:6px; text-align:left; width:100%; }
+.subs summary{ cursor:pointer; color:#2d3a4a; }
+.subs-body{
+  margin-top:8px; max-height:160px; overflow:auto; display:grid; gap:8px;
+}
+.bubble{ display:inline-block; padding:10px 12px; border-radius:14px; font-size:14px; }
+.bubble.l{ background:#fff; border:1px solid var(--border); color:#2d3a4a; }
+.bubble.r{ background:#E9F5E2; color:#20441a; }  /* light green bubble */
+
+/* CALL orb (phone), BankIslami colors */
+.orb{
+  position:relative; width:160px; height:160px; border-radius:50%;
+  display:grid; place-items:center;
+  background: radial-gradient(circle at 35% 30%, var(--blue2), var(--blue));
+  box-shadow:0 12px 24px rgba(31,90,166,.22);
+  will-change: transform, box-shadow, filter;
+}
+.orb svg{ opacity:.95; }
+
+/* Ambient pulse */
+@keyframes orbPulse{
+  0%   { transform:scale(1);   box-shadow:0 0 0 0 rgba(31,90,166,.22); }
+  70%  { transform:scale(1.03);box-shadow:0 0 0 22px rgba(31,90,166,0); }
+  100% { transform:scale(1);   box-shadow:0 0 0 0 rgba(31,90,166,0); }
+}
+.orb.idle{ animation:orbPulse 2s infinite; }
+
+/* Connecting wobble */
+@keyframes wobble{ 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+.orb.connecting{ animation:wobble 1.2s infinite; }
+
+/* Listening ripples */
+.ripple{
+  position:absolute; inset:0; border-radius:50%; border:2px solid rgba(255,255,255,.55);
+  opacity:0; pointer-events:none;
+}
+@keyframes ripple{
+  0%{ transform:scale(1); opacity:.35; }
+  100%{ transform:scale(1.5); opacity:0; }
+}
+.orb.listening .ripple{ animation:ripple 1.4s ease-out infinite; }
+.orb.listening .r1{ animation-delay:0s; }
+.orb.listening .r2{ animation-delay:.35s; }
+.orb.listening .r3{ animation-delay:.7s; }
+
+/* Speaking sweep */
+@keyframes sweep{ 0%{filter:hue-rotate(0)} 100%{filter:hue-rotate(360deg)} }
+.orb.speaking{ animation:orbPulse 2s infinite, sweep 25s linear infinite; }
+
+/* Error shake */
+@keyframes shakeX{
+  0%,100%{ transform:translateX(0); }
+  25%{ transform:translateX(-3px); }
+  50%{ transform:translateX(3px); }
+  75%{ transform:translateX(-2px); }
+}
+.orb.error{ animation:shakeX .25s ease-in-out, orbPulse 2s infinite; }
+
+/* Footer */
+.bi-footer{
+  flex:0 0 auto; text-align:center; padding:10px;
+  border-top:1px solid var(--border); background:#fff; color:var(--muted);
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce){
+  *{ animation:none !important; transition:none !important; }
+}
+
+
+⸻
+
+3) (Optional) Tiny enhancement in public/app.js
+
+Add a helper (no logic change) to toggle orb states:
+
+function setOrbState(state){
+  const states = ['idle','connecting','listening','speaking','error'];
+  states.forEach(s => dotEl.classList.remove(s));
+  if (state) dotEl.classList.add(state);
+}
+
+// Example spots (tie to your existing flow):
+// setOrbState('connecting');  // after Start clicked, before SDP post
+// setOrbState('listening');   // once connected/datachannel open
+// setOrbState('speaking');    // if you detect TTS speaking
+// setOrbState('idle');        // on stop
+// setOrbState('error');       // on any connection error
+
+
+⸻
+
+4) What stays unchanged (so nothing breaks)
+	•	IDs: dot, startBtn, stopBtn, status
+	•	Your WebRTC/OpenAI code and /session endpoint
+
+⸻
+
+5) Acceptance checklist
+	•	Dark-blue sticky header; BankIslami logo top-left, clearly visible and sized ~36px.
+	•	Clean white cards with soft shadows; lime-green accents.
+	•	Phone orb with smooth animations (idle/connecting/listening/speaking/error).
+	•	Buttons: Call BankIslami (blue gradient) + Stop (ghost).
+	•	Urdu text in Nastaliq with RTL.
+	•	Responsive down to 360px; footer pinned; no odd background bands.
+
+Drop this into Replit and hit Run—you’ll have a BankIslami-styled, animated UI ready for your live Urdu voice agent.

@@ -1,0 +1,77 @@
+You are updating the UBL Inbound Caller web app.
+
+Make the following changes ONLY, without changing any existing inbound/outbound functionality or the SIP/voice agent behavior.
+
+===========================
+UI CHANGE:
+===========================
+
+1. Replace the text "Show subtitles" with:
+   Show Live Transcript
+
+2. When the user clicks “Show Live Transcript”, open the same transcript panel that already exists, but now it must display a LIVE, streaming transcript from the OpenAI Realtime API.
+
+3. The transcript must update in real-time, exactly like the OpenAI Playground “Audio” panel.
+
+4. When a call ends, or when a new call is started:
+   - Clear the transcript window
+   - Start capturing a new live transcript for the new call
+
+===========================
+BACKEND / JS REALTIME HANDLER:
+===========================
+
+Use the existing realtime WebSocket client already in the project.
+
+Add a listener for transcript messages:
+
+connection.on("response.output_text.delta", (delta) => {
+    // append streaming text to live transcript div
+});
+
+Also handle segment updates (optional but recommended):
+connection.on("response.output_text.done", (full) => {
+    // finalize the segment in the transcript
+});
+
+===========================
+FRONTEND IMPLEMENTATION:
+===========================
+
+Create (or update) a DIV on the page:
+
+<div id="live-transcript" class="transcript-window"></div>
+
+This window must:
+- Auto-scroll as new lines arrive
+- Display text as soon as the model speaks
+- Stay visible until call ends
+- Reset with each new call
+
+===========================
+CALL RESET LOGIC:
+===========================
+
+Whenever a new call is started:
+
+document.getElementById("live-transcript").innerHTML = "";
+
+Call the realtime reset:
+connection.send({
+    type: "conversation.reset"
+});
+
+===========================
+RESTRICTIONS:
+===========================
+
+- DO NOT change any existing SIP, WebRTC, or call-start logic.
+- DO NOT modify the model, voice, or system prompt.
+- DO NOT add new features besides the Live Transcript display.
+- Keep UI styling consistent with current UBL branding.
+
+===========================
+GOAL:
+===========================
+
+The final result must behave like the OpenAI Pla

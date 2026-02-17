@@ -1,0 +1,270 @@
+Got you. Here’s a single, copy-paste Replit prompt you can give Ghostwriter/Agent to “beauty up” the current calling-agent UI so it looks/feels like UBL’s site: clean grid, tighter spacing, better hierarchy, Urdu-first polish, and brand-aligned blues.
+
+⸻
+
+Replit Prompt — “Polish UI/UX to UBL Brand (Urdu-first)”
+
+Goal: Make the calling-agent web app visually match UBL’s website style: clean, well-aligned, high quality, Urdu-friendly, and brand-consistent. Keep the current functionality and copy; we’re improving layout/visuals only.
+
+1) Brand tokens (add to a global CSS file, e.g. client/src/index.css)
+
+Create CSS variables and use them everywhere. The two key blues sampled from the screenshot are:
+	•	--ubl-primary: #285781 (deep corporate blue)
+	•	--ubl-header: #D6E2FB (pastel header blue)
+
+Also add neutrals and states:
+
+:root{
+  --ubl-primary:#285781;
+  --ubl-header:#D6E2FB;
+  --ubl-primary-900:#1F4868;
+  --ubl-primary-700:#2F6B9B;
+  --ubl-primary-500:#3E86BF;
+  --ubl-accent:#2A77D3;           /* soft accent for links/icons */
+  --ubl-gradient-start:#2A77D3;   /* button/mic gradient */
+  --ubl-gradient-end:#6AC2FF;
+
+  --bg:#ffffff;
+  --surface:#ffffff;
+  --muted:#f5f7fb;
+  --border:#e5e9f2;
+  --text:#1f2937;
+  --text-muted:#667085;
+  --success:#16a34a;
+  --warning:#f59e0b;
+  --danger:#dc2626;
+  --shadow: 0 8px 24px rgba(40,87,129,.12);
+}
+
+2) Global reset, typography, and Urdu support
+
+Load Inter for English and Noto Nastaliq Urdu (fallback Noto Naskh Arabic) from Google Fonts. Give Urdu headings more line-height and proper RTL rendering.
+	•	In index.html <head> add:
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;600&display=swap" rel="stylesheet">
+
+	•	In global CSS:
+
+*{box-sizing:border-box}
+html,body,#root{height:100%}
+body{
+  margin:0;
+  font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color:var(--text);
+  background:var(--bg);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+
+.urdu{
+  direction:rtl;
+  font-family:"Noto Nastaliq Urdu","Noto Naskh Arabic", serif;
+  line-height:1.7;
+  letter-spacing:0.1px;
+}
+
+/* utility */
+.container{max-width:1100px;margin:0 auto;padding:24px}
+.grid{display:grid;gap:20px}
+.center{display:flex;align-items:center;justify-content:center}
+.muted{color:var(--text-muted)}
+.card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:16px;
+  box-shadow:var(--shadow);
+}
+
+3) Header & footer to match UBL look
+
+Replace your top bar styles with this polished header: slim pastel band + deep blue strip with logo/title.
+
+.header{
+  position:sticky; top:0; z-index:20;
+  background:linear-gradient(180deg,var(--ubl-header),#fff 75%);
+  border-bottom:1px solid var(--border);
+}
+.header-inner{
+  max-width:1100px;margin:0 auto;padding:14px 24px 10px;
+}
+.brandbar{
+  background:var(--ubl-primary);
+  color:#fff;
+  padding:10px 0;
+}
+.brandbar .inner{
+  max-width:1100px;margin:0 auto;padding:0 24px;
+  display:flex;align-items:center;gap:12px;
+}
+.brandbar .logo{height:28px}
+.brandbar .title{
+  font-weight:700;letter-spacing:.2px;
+}
+.brandbar .subtitle.urdu{
+  margin-inline-start:auto;
+  opacity:.9;font-weight:500;
+}
+
+/* footer notice strip */
+.footer{
+  background:var(--ubl-primary);
+  color:#fff;
+}
+.footer .inner{
+  max-width:1100px;margin:0 auto;padding:12px 24px;
+  font-size:.9rem; display:flex; gap:10px; align-items:center;
+}
+.badge{
+  background:#fff1;border-radius:999px;padding:4px 10px;font-size:.78rem
+}
+
+4) Main hero: mic orb + CTA buttons + Urdu line
+
+Create a centered hero card with the mic orb, heading, and two CTAs aligned.
+
+.hero{
+  padding:28px 0 18px;
+}
+.hero-card{
+  padding:36px 28px;
+}
+.mic-orb{
+  width:140px;height:140px;border-radius:50%;
+  background:linear-gradient(135deg,var(--ubl-gradient-start),var(--ubl-gradient-end));
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:40px;
+  box-shadow:0 12px 30px rgba(42,119,211,.28);
+  margin:0 auto 18px;
+}
+.h1{
+  text-align:center; font-size:22px; font-weight:700; margin:8px 0 4px;
+}
+.h2.urdu{
+  text-align:center; font-size:20px; font-weight:600; color:var(--ubl-primary-900);
+  margin:0 0 18px;
+}
+.cta-row{
+  display:flex; gap:12px; justify-content:center; align-items:center; margin-top:6px;
+}
+.btn{
+  appearance:none;border:0;border-radius:999px;
+  padding:12px 20px; font-weight:600; cursor:pointer;
+  box-shadow:0 6px 20px rgba(42,119,211,.18);
+  transition:transform .06s ease, box-shadow .2s ease, opacity .2s ease;
+}
+.btn:active{ transform:translateY(1px) }
+.btn-primary{
+  background:linear-gradient(135deg,var(--ubl-gradient-start),var(--ubl-gradient-end));
+  color:#fff;
+}
+.btn-outline{
+  background:#fff;color:var(--ubl-primary);border:2px solid var(--ubl-primary);
+}
+.helper{
+  text-align:center; margin-top:12px; font-size:.92rem; color:var(--text-muted);
+}
+.status-dot{
+  width:8px;height:8px;border-radius:50%; background:var(--warning); display:inline-block;margin-right:8px;
+}
+.status-dot.ready{ background:var(--success) }
+
+5) Layout clean-up in JSX/HTML (don’t change logic)
+
+Keep your existing elements but wrap them like this (adjust classNames only):
+
+<header class="header">
+  <div class="header-inner"></div>
+  <div class="brandbar">
+    <div class="inner">
+      <img src="/assets/ubl-logo.svg" class="logo" alt="UBL"/>
+      <div class="title">UBL Customer Support</div>
+      <div class="subtitle urdu">آواز پر مبنی کسٹمر سپورٹ</div>
+    </div>
+  </div>
+</header>
+
+<main class="container hero">
+  <section class="card hero-card">
+    <div class="mic-orb"><span class="icon-mic">🎤</span></div>
+    <h1 class="h1">Click “Call UBL” to talk to Customer Support</h1>
+    <div class="h2 urdu">کسٹمر سپورٹ سے بات کرنے کے لیے کلک کریں</div>
+
+    <div class="cta-row">
+      <button id="callBtn" class="btn btn-primary">Call UBL</button>
+      <button id="stopBtn" class="btn btn-outline">Stop</button>
+    </div>
+
+    <p class="helper">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Ready to connect</span>
+    </p>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="inner">
+    <span class="badge">🎙 Microphone permission required</span>
+    <span class="badge urdu">اردو زبان میں معاونت دستیاب ہے</span>
+  </div>
+</footer>
+
+6) Micro-interactions (optional, small JS only)
+
+When calling starts, add a “ready” visual cue and button states; when stopped, revert.
+
+// in your existing script
+const callBtn = document.getElementById('callBtn');
+const stopBtn = document.getElementById('stopBtn');
+const dot = document.getElementById('statusDot');
+const text = document.getElementById('statusText');
+
+function setReady(){
+  dot.classList.add('ready');
+  text.textContent = 'Connected';
+}
+function setIdle(){
+  dot.classList.remove('ready');
+  text.textContent = 'Ready to connect';
+}
+
+callBtn?.addEventListener('click', ()=> {
+  callBtn.disabled = true; stopBtn.disabled = false;
+  setReady();
+});
+stopBtn?.addEventListener('click', ()=> {
+  callBtn.disabled = false; stopBtn.disabled = true;
+  setIdle();
+});
+
+7) Spacing & responsiveness
+
+Tighten spacing on mobile; keep grid max-width consistent.
+
+@media (max-width:768px){
+  .container{padding:16px}
+  .hero-card{padding:22px 16px}
+  .mic-orb{width:120px;height:120px;font-size:36px}
+  .h1{font-size:18px}
+  .h2.urdu{font-size:18px}
+  .cta-row{flex-direction:column}
+  .btn{width:100%}
+  .brandbar .subtitle{display:none}
+}
+
+8) Keep colors consistent in icons/gradients
+	•	Use the same gradient for the mic orb and the primary “Call UBL” button (--ubl-gradient-start → --ubl-gradient-end).
+	•	All links/icons use --ubl-accent.
+	•	Avoid random purples/greens that aren’t in the palette.
+
+9) Acceptance criteria (visual QA)
+	•	Header shows pastel band + deep blue strip with logo and Urdu subtitle.
+	•	Main content is centered in a card with soft shadow and 16px radius.
+	•	Mic orb and primary button share the same gradient.
+	•	Urdu text is rtl, properly spaced, using Noto Nastaliq Urdu.
+	•	Buttons feel clickable (subtle press effect, shadow).
+	•	Status dot changes color on connect (warning → success).
+	•	Mobile view stacks neatly, no overflow, tidy paddings.
+
+⸻
+
+If anything breaks while applying, keep the structure intact and adjust only class names/styles. Don’t modify call logic or API wiring. Aim for a calm, trustworthy UBL look with crisp layout and Urdu polish.

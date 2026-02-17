@@ -1,0 +1,159 @@
+Replit Prompt — Mirror Playground Agent v9 (No Overrides, Exact Behavior)
+
+Make my deployed app behave EXACTLY like my Playground agent shown in the screenshot:
+
+Prompt ID: pmpt_68b2eb471c648195b3b08d2ab5f8f05b0387026f14127466
+
+Version: 9
+
+Model: gpt-realtime
+
+Voice: Cedar
+
+Turn detection: Normal (server VAD)
+
+It must follow the prompt’s multilingual policy (Urdu/Sindhi/Punjabi/Pashto/English) and Bank Makramah facts just like the Playground.
+
+Do not add or inject any extra instructions from the app. The prompt in OpenAI controls everything.
+
+0) Deployment secrets (use deployment secrets, not only workspace)
+
+Set these in Deploy → Edit commands & secrets → Secrets (production):
+
+OPENAI_API_KEY = my project key with balance
+
+OPENAI_REALTIME_MODEL = gpt-realtime
+
+OPENAI_PROMPT_ID = pmpt_68b2eb471c648195b3b08d2ab5f8f05b0387026f14127466
+
+OPENAI_PROMPT_VERSION = 9
+
+1) Server — one clean /session that passes prompt+version and NOTHING ELSE
+
+Open server.js (or server/routes.ts). Replace the /session route with this exact code and leave everything else (CORS, static, /healthz, listen) as-is:
+
+app.post("/session", async (_req, res) => {
+  const url = "https://api.openai.com/v1/realtime/sessions";
+  const headers = {
+    "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+    "Content-Type": "application/json",
+    "OpenAI-Beta": "realtime=v1"
+  };
+
+  // EXACTLY match Playground agent config
+  const baseBody = {
+    model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime",
+    modalities: ["audio", "text"],
+    turn_detection: { type: "server_vad" }
+    // DO NOT set 'voice' or add 'instructions' here.
+    // The Playground prompt controls voice & policy.
+  };
+
+  const withPrompt = {
+    ...baseBody,
+    prompt: {
+      id: process.env.OPENAI_PROMPT_ID,
+      version: process.env.OPENAI_PROMPT_VERSION
+    }
+  };
+
+  // If the account/build doesn’t accept prompt yet, we’ll fail loud.
+  try {
+    const r = await fetch(url, {
+      method: "POST", headers, body: JSON.stringify(withPrompt)
+    });
+
+    const text = await r.text();
+    if (!r.ok) {
+      console.error("[Realtime] session failed:", r.status, text);
+      return res.status(r.status).json({ error: "session_create_failed", detail: text });
+    }
+
+    const json = JSON.parse(text);
+    console.log("[Realtime] OK",
+      "model=", json?.model,
+      "prompt_id_applied=", process.env.OPENAI_PROMPT_ID,
+      "version=", process.env.OPENAI_PROMPT_VERSION);
+    return res.json({ client_secret: json.client_secret });
+  } catch (e) {
+    console.error("Session error:", e);
+    return res.status(500).json({ error: "server_error" });
+  }
+});
+
+
+Notes:
+• We do not set instructions or voice here (the prompt owns those).
+• We do not fall back silently — if prompt isn’t accepted, we’ll see a clear 4xx with details so we can fix the model/prompt mismatch instead of drifting to wrong behavior.
+
+2) Client — send SDP correctly, same model, no injected messages
+
+Open public/app.js (or wherever the WebRTC connect is). Make one realtime request and ensure it is SDP with these headers and this model:
+
+// after createOffer & setLocalDescription:
+const resp = await fetch(
+  "https://api.openai.com/v1/realtime?model=gpt-realtime",
+  {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,     // token from /session
+      "OpenAI-Beta": "realtime=v1",
+      "Content-Type": "application/sdp"
+    },
+    body: offer.sdp
+  }
+);
+
+
+Delete/disable all of the following from the client:
+
+Any response.create or “greeting” you send via data channel.
+
+Any instructions/“system prompt”/branding text you add in the client.
+
+Any legacy calls to /v1/realtime/events or JSON POSTs to the realtime endpoint.
+
+Any hardcoded “BankIslami/UBL” strings beyond UI labels.
+
+The client should only: get mic, create RTCPeerConnection, post SDP, play remote audio, show status.
+
+3) Kill local overrides (this is likely why it lies / refuses languages)
+
+Search the codebase and delete or comment any of these if found:
+
+instructions: strings, systemPrompt, role: "system", response.create blocks.
+
+Anything that sets language policy in the client.
+
+Anything that changes voice on the client.
+
+It must rely 100% on the Playground prompt for brand facts, language policy, and voice.
+
+4) Health + Deploy
+
+Ensure GET /healthz returns "ok".
+
+Deploy run command: npm start.
+
+Redeploy, then hard refresh (Cmd/Ctrl-Shift-R).
+
+5) Sanity check (you should see this)
+
+Network tab: POST /session → 200 (no fallback), POST /v1/realtime?... → 200.
+
+Server logs show:
+
+[Realtime] OK model= gpt-realtime prompt_id_applied= pmpt_... version= 9
+
+
+Behavior: responds in Cedar voice, follows Bank Makramah facts, and switches languages (Urdu/Sindhi/Punjabi/Pashto/English) per your prompt — just like Playground.
+
+6) If it still differs from Playground
+
+If /session returns 400/422 with text mentioning “prompt” → your account build might not yet accept prompt for Realtime. In that case, stop the deploy and tell me the exact error text; do not add any client instructions as a workaround.
+
+Make sure the deployment secrets (not only workspace .env) have the same project key that shows usage in your Playground org/project.
+
+Confirm the model name matches exactly what the agent uses in Playground (gpt-realtime).
+
+Outcome: Replit will pass your exact prompt (v9) to OpenAI Realtime with the same model and no local overrides. The agent will speak Cedar, answer with Bank Makramah facts, and switch languages when asked — identical to the Playground.
