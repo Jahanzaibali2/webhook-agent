@@ -26,6 +26,13 @@ function generateStan(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+// Conversation log – easy to grep and read in terminal (e.g. grep CONV)
+function logConv(role: "USER" | "AGENT", text: string) {
+  const ts = new Date().toISOString();
+  const prefix = role === "USER" ? ">>>" : "<<<";
+  console.log(`[CONV] ${ts} ${prefix} ${role}: ${text.trim() || "(empty)"}`);
+}
+
 // Helper to get current date/time in required formats
 function getTransactionDateTime() {
   const now = new Date();
@@ -184,21 +191,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "OpenAI-Beta": "realtime=v1"
     };
 
-    // EXACTLY match Playground agent config
+    // Prompt from OpenAI Playground – use OPENAI_PROMPT_ID and OPENAI_PROMPT_VERSION in .env
+    const promptId = process.env.OPENAI_PROMPT_ID || "pmpt_69948eeec39481959a7cc4250542590f01fd5d101c307675";
+    const promptVersion = process.env.OPENAI_PROMPT_VERSION || "2";
+
     const baseBody = {
       model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime",
       modalities: ["audio", "text"],
       turn_detection: { type: "server_vad" }
-      // DO NOT set 'voice' or add 'instructions' here.
-      // The Playground prompt controls voice & policy.
     };
 
     const withPrompt = {
       ...baseBody,
-      prompt: {
-        id: "pmpt_68da7434aefc8195aec2c1e07cfc24a7053b8ea30d848663",
-        version: "18"
-      },
+      prompt: { id: promptId, version: promptVersion },
       tools: TOOLS
     };
 
@@ -215,15 +220,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const json = JSON.parse(text);
-      console.log("[Realtime] OK",
-        "model=", json?.model,
-        "prompt_id_applied=", "pmpt_68da7434aefc8195aec2c1e07cfc24a7053b8ea30d848663",
-        "version=", "18");
+      console.log("[Realtime] OK", "model=", json?.model, "prompt_id=", promptId, "version=", promptVersion);
       return res.json({ client_secret: json.client_secret });
     } catch (e) {
       console.error("Session error:", e);
       return res.status(500).json({ error: "server_error" });
     }
+  });
+
+  // Conversation log endpoint – browser client sends transcript lines so they appear in server terminal
+  app.post("/api/log-conversation", (req, res) => {
+    const { role, text } = req.body || {};
+    if (text && typeof text === "string") {
+      logConv(role === "user" ? "USER" : "AGENT", text);
+    }
+    res.status(204).end();
   });
 
   // Generate call summary endpoint
@@ -411,15 +422,14 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
         "Content-Type": "application/json"
       };
 
+      const promptId = process.env.OPENAI_PROMPT_ID || "pmpt_69948eeec39481959a7cc4250542590f01fd5d101c307675";
+      const promptVersion = process.env.OPENAI_PROMPT_VERSION || "2";
       const acceptBody = {
         type: "realtime",
         model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime",
         modalities: ["audio", "text"],
         turn_detection: { type: "server_vad" },
-        prompt: {
-          id: "pmpt_68da7434aefc8195aec2c1e07cfc24a7053b8ea30d848663",
-          version: "18"
-        }
+        prompt: { id: promptId, version: promptVersion }
       };
 
       const response = await fetch(acceptUrl, {
@@ -477,9 +487,12 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
             streamSid = data.start.streamSid;
             callSid = data.start.callSid;
             console.log(`[Twilio WS] Stream started: ${streamSid}, Call: ${callSid}`);
+            console.log(`[CONV] ---------- Call started (${callSid}) ----------`);
 
             // Create OpenAI Realtime session
             const sessionUrl = "https://api.openai.com/v1/realtime/sessions";
+            const promptId = process.env.OPENAI_PROMPT_ID || "pmpt_69948eeec39481959a7cc4250542590f01fd5d101c307675";
+            const promptVersion = process.env.OPENAI_PROMPT_VERSION || "2";
             const sessionResponse = await fetch(sessionUrl, {
               method: "POST",
               headers: {
@@ -492,10 +505,7 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
                 modalities: ["audio", "text"],
                 turn_detection: { type: "server_vad" },
                 tools: TOOLS,
-                prompt: {
-                  id: "pmpt_68da7434aefc8195aec2c1e07cfc24a7053b8ea30d848663",
-                  version: "18"
-                }
+                prompt: { id: promptId, version: promptVersion }
               })
             });
 
@@ -550,6 +560,10 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
             openaiWs.on("message", async (openaiMessage: Buffer) => {
               try {
                 const event = JSON.parse(openaiMessage.toString());
+                const isConvEvent = event.type?.includes("transcription") || event.type?.includes("transcript") || event.type?.includes("text.done");
+                if (isConvEvent) {
+                  console.log("[OpenAI WS] event:", event.type);
+                }
 
                 // Handle different OpenAI Realtime events
                 switch (event.type) {
@@ -574,12 +588,21 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
 
                   case "response.audio_transcript.delta":
                   case "response.text.delta":
-                    console.log("[OpenAI WS] Transcript:", event.delta);
+                    // Streaming; full line logged on .done
                     break;
 
-                  case "conversation.item.input_audio_transcription.completed":
-                    console.log("[OpenAI WS] User said:", event.transcript);
+                  case "response.audio_transcript.done":
+                  case "response.text.done": {
+                    const agentText = (event.transcript ?? event.text ?? "").trim();
+                    if (agentText) logConv("AGENT", agentText);
                     break;
+                  }
+
+                  case "conversation.item.input_audio_transcription.completed": {
+                    const userText = (event.transcript ?? "").trim();
+                    if (userText) logConv("USER", userText);
+                    break;
+                  }
 
                   case "response.function_call_arguments.done":
                     // AI wants to call a function/tool
@@ -665,6 +688,15 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
                   case "error":
                     console.error("[OpenAI WS] Error:", event.error);
                     break;
+
+                  default:
+                    // Fallback: log any event that has transcript/text so we don't miss conversation
+                    const anyTranscript = (event.transcript ?? event.text ?? "").trim();
+                    if (anyTranscript) {
+                      const isUser = event.type?.includes("input_audio_transcription");
+                      logConv(isUser ? "USER" : "AGENT", anyTranscript);
+                    }
+                    break;
                 }
               } catch (err) {
                 console.error("[OpenAI WS] Error parsing message:", err);
@@ -704,6 +736,7 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
           */
 
           case "stop":
+            console.log(`[CONV] ---------- Call ended (${callSid}) ----------`);
             console.log(`[Twilio WS] Stream stopped: ${streamSid}`);
             if (openaiWs) {
               openaiWs.close();

@@ -94,6 +94,12 @@ export default function VoiceSupport() {
       timestamp: Date.now()
     };
     setTranscriptMessages(prev => [...prev, message]);
+    // Send to server so [CONV] logs appear in terminal
+    fetch("/api/log-conversation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role, text: text.trim() })
+    }).catch(() => {});
   }, [containsHindiOrGurmukhi]);
 
   const setOrbState = useCallback((state: ConnectionState['status']) => {
