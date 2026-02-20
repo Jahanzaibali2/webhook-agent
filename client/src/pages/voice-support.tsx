@@ -25,6 +25,10 @@ export default function VoiceSupport() {
   const [transcriptMessages, setTranscriptMessages] = useState<TranscriptMessage[]>([]);
   const [currentAssistantText, setCurrentAssistantText] = useState("");
   const [callSummary, setCallSummary] = useState<string>("");
+  const [sessionId, setSessionId] = useState<string>("");
+  const [accountNumber, setAccountNumber] = useState<string>("");
+  const [sessionInstructions, setSessionInstructions] = useState<string>("");
+  const [sessionTools, setSessionTools] = useState<any[]>([]);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -99,7 +103,7 @@ export default function VoiceSupport() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role, text: text.trim() })
-    }).catch(() => {});
+    }).catch(() => { });
   }, [containsHindiOrGurmukhi]);
 
   const setOrbState = useCallback((state: ConnectionState['status']) => {
@@ -141,7 +145,11 @@ export default function VoiceSupport() {
         throw new Error(`Failed to create session: ${errorText}`);
       }
 
-      const { client_secret } = await sessRes.json();
+      const { client_secret, sessionId: newSessionId, instructions, tools } = await sessRes.json();
+      if (newSessionId) setSessionId(newSessionId);
+      if (instructions) setSessionInstructions(instructions);
+      if (tools) setSessionTools(tools);
+
       if (!client_secret?.value) {
         throw new Error("No client secret received from server");
       }
@@ -182,6 +190,7 @@ export default function VoiceSupport() {
         const sessionConfig = {
           type: "session.update",
           session: {
+            instructions: sessionInstructions,
             input_audio_transcription: { model: "whisper-1" },
             turn_detection: {
               type: "server_vad",
@@ -190,7 +199,8 @@ export default function VoiceSupport() {
               silence_duration_ms: 400,
               create_response: true,
               interrupt_response: true
-            }
+            },
+            tools: sessionTools
           }
         };
 
@@ -202,7 +212,7 @@ export default function VoiceSupport() {
         setControlsState(true);
       };
 
-      dcRef.current.onmessage = (event) => {
+      dcRef.current.onmessage = async (event) => {
         try {
           const data = JSON.parse(event.data);
           console.log("Received server event:", data);
@@ -247,6 +257,40 @@ export default function VoiceSupport() {
             if (data.text) {
               addTranscriptMessage('assistant', data.text);
               setCurrentAssistantText("");
+            }
+          }
+
+          else if (data.type === 'response.function_call_arguments.done') {
+            console.log("Function call detected:", data.name, data.arguments);
+            if (data.name === 'get_balance') {
+              try {
+                const args = JSON.parse(data.arguments || "{}");
+                const accNo = args.account_number;
+                if (accNo) {
+                  console.log("Captured account number:", accNo);
+                  setAccountNumber(accNo);
+
+                  // Fetch REAL balance from our API
+                  const balanceRes = await fetch(`/api/get-balance?accountNumber=${accNo}`);
+                  const balanceData = await balanceRes.json();
+                  console.log("Balance data received:", balanceData);
+
+                  // Send REAL tool output back to OpenAI
+                  if (dcRef.current && dcRef.current.readyState === "open") {
+                    dcRef.current.send(JSON.stringify({
+                      type: "conversation.item.create",
+                      item: {
+                        type: "function_call_output",
+                        call_id: data.call_id,
+                        output: JSON.stringify(balanceData)
+                      }
+                    }));
+                    dcRef.current.send(JSON.stringify({ type: "response.create" }));
+                  }
+                }
+              } catch (e) {
+                console.error("Error handling function call:", e);
+              }
             }
           }
 
@@ -299,6 +343,21 @@ export default function VoiceSupport() {
   const stopConversation = async () => {
     try {
       updateStatus("Disconnecting...", "رابطہ منقطع کر رہے ہیں...", 'connecting');
+
+      // Save call data to JSON before summary generation
+      const transcriptText = transcriptMessages.map(m => `${m.role === 'user' ? 'Customer' : 'Agent'}: ${m.text}`).join('\n');
+      if (sessionId) {
+        console.log("Saving call data for session:", sessionId, "Account Captured:", accountNumber);
+        fetch('/api/save-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId,
+            transcript: transcriptText,
+            accountNumber: accountNumber || null
+          })
+        }).catch(err => console.error("Failed to save call data:", err));
+      }
 
       generateCallSummary(transcriptMessages);
 

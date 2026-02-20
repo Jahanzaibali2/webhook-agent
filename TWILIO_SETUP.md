@@ -126,8 +126,8 @@ TWILIO_PHONE_NUMBER=+1234567890
 
 ### OpenAI Prompt
 Your bot uses the UBL Bank customer service prompt:
-- **Prompt ID**: `pmpt_68da7434aefc8195aec2c1e07cfc24a7053b8ea30d848663`
-- **Version**: 18
+- **Prompt ID**: `pmpt_69948eeec39481959a7cc4250542590f01fd5d101c307675`
+- **Version**: 2
 
 ## 🐛 Troubleshooting
 

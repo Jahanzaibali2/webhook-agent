@@ -13,6 +13,7 @@ export const calls = pgTable("calls", {
   id: varchar("id", { length: 50 }).primaryKey().default(sql`gen_random_uuid()`),
   callSid: text("call_sid").notNull().unique(),
   accountNumber: text("account_number"),
+  transcript: text("transcript"),
   lastUpdate: timestamp("last_update").defaultNow(),
 });
 

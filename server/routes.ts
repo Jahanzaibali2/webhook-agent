@@ -42,10 +42,54 @@ function getTransactionDateTime() {
   return { date, time, transmission };
 }
 
+// Function to call the Simple Backend Balance Inquiry API
+async function callSimpleBackendBalanceAPI(params: {
+  accountNumber: string;
+}): Promise<{ success: boolean; message: string; balance?: string; currency?: string; details?: any }> {
+  try {
+    const SIMPLE_BACKEND_URL = `http://localhost:8000/get-balance?accountNumber=${params.accountNumber}`;
+    console.log("[Simple Backend] Calling balance inquiry API:", SIMPLE_BACKEND_URL);
+
+    const response = await fetch(SIMPLE_BACKEND_URL);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return {
+        success: false,
+        message: errorData.message || `HTTP error! status: ${response.status}`,
+        details: errorData
+      };
+    }
+
+    const responseData = await response.json();
+    console.log("[Simple Backend] Response:", JSON.stringify(responseData, null, 2));
+
+    return {
+      success: true,
+      message: responseData.message || "Balance retrieved successfully",
+      balance: responseData.balance,
+      currency: responseData.currency || "PKR",
+      details: responseData
+    };
+  } catch (error) {
+    console.error("[Simple Backend] Balance Inquiry Error:", error);
+    return {
+      success: false,
+      message: "Failed to connect to the simple backend service.",
+      details: error
+    };
+  }
+}
+
 // Function to call UBL Balance Inquiry API
 async function callUBLBalanceInquiryAPI(params: {
   accountNumber: string;
 }): Promise<{ success: boolean; message: string; balance?: string; currency?: string; details?: any }> {
+  // Always use the simple backend for testing purposes in this environment
+  return await callSimpleBackendBalanceAPI(params);
+
+  /* 
+  // Production UBL API Logic (commented out for local testing)
   const { date, time, transmission } = getTransactionDateTime();
 
   const requestBody = {
@@ -137,6 +181,7 @@ async function callUBLBalanceInquiryAPI(params: {
       details: { demo: true }
     };
   }
+  */
 }
 
 // Tool definitions for OpenAI Realtime - VERBAL ONLY (no keypad/DTMF)
@@ -144,7 +189,7 @@ const TOOLS = [
   {
     type: "function",
     name: "get_balance",
-    description: "Get the customer's account balance. Call this AFTER the customer has verbally provided their account number.",
+    description: "Get the customer's account balance from the bank's live database. YOU MUST CALL THIS TOOL every time a balance is requested. DO NOT use any other information for the balance. If the tool returns that the account doesn't exist (success: false), YOU MUST explicitly tell the customer that the 'account doesn't exist'.",
     parameters: {
       type: "object",
       properties: {
@@ -183,6 +228,82 @@ const lastCollectionTime: Map<string, number> = new Map();
 ============================================ */
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  const SESSION_INSTRUCTIONS = `
+========================
+ROLE
+========================
+You are Ahmed, UBL’s official Digital Voice Agent.
+You conduct fast, professional, friendly, and natural conversations suitable for real-time audio.
+Your tone must be lively and human, never robotic or monotone.
+Responses must be short, clear, and conversational.
+
+========================
+DOMAIN RESTRICTION (HARD RULE)
+========================
+You can ONLY assist with Account Balance Inquiry.
+For any other request, respond exactly as follows and end the call:
+English: “I apologize, but I can only assist with account balance inquiries. For other services, please call 111-825-888 or visit your nearest UBL branch.”
+Urdu: “Maazrat, mein sirf account balance inquiry mein madad kar sakta hoon. Doosri services ke liye 111-825-888 per call karen ya apni qareeb tareen UBL branch visit karen.”
+
+========================
+LANGUAGE RULES
+========================
+Allowed languages ONLY: Urdu, English, Arabic, Pashto, Sindhi, Pakistani Punjabi.
+Never use Hindi or Indian Punjabi.
+If language is unclear, ask ONCE in Urdu only: “Urdu, English, Arabic, Pashto, Sindhi, ya Pakistani Punjabi mein baat karna pasand karein ge?”
+Once selected, lock the language for the entire call.
+
+========================
+GREETING (USE ONCE)
+========================
+Urdu: “Assalam o Alaikum, mein Ahmed bol raha hoon UBL se. Aap ki madad kese kar sakta hoon?”
+English: “Hello, this is Ahmed from UBL. How may I assist you?”
+
+========================
+WORKFLOW — ACCOUNT BALANCE INQUIRY
+========================
+STATE 1: INTENT CONFIRMATION
+Proceed if user wants balance. Otherwise, apply domain restriction and end call.
+
+STATE 2: TPIN VERIFICATION (STRICT)
+Valid TPIN: 1122. MUST be spoken as four single digits (e.g., "one one two two"). 
+If incorrect, allow 3 attempts then go to STATE 6. 
+Never hint, repeat, or store the TPIN.
+
+STATE 3: ACCOUNT NUMBER HANDLING
+Ask for account number. Do not repeat it back. If verification fails (tool reports success: false), YOU MUST explicitly say 'account doesn't exist'.
+
+STATE 4: BALANCE ANNOUNCEMENT
+Announce balance from tool output.
+
+STATE 5: ANY OTHER QUERY
+Ask once for other balance-related queries. If none, proceed to closing.
+
+STATE 6: EXCEPTION HANDLING
+Verification failed 3 times: “I’m sorry, verification has failed multiple times. Please visit your nearest UBL branch for assistance.”
+
+STATE 7: CLOSING
+“Thank you for calling UBL. Have a great day!” / “UBL call karne ka shukriya. Allah Hafiz!”
+
+========================
+REAL-TIME AUDIO STABILITY (CRITICAL)
+========================
+1. DO NOT respond immediately to partial or unclear speech. 
+2. Wait for sentence completion. 
+3. Ignore background noise.
+4. Only respond when directed toward you.
+5. If mid-sentence break: “Sorry, I didn’t catch that completely. Could you please repeat?”
+
+========================
+FINAL RULES
+========================
+- Never skip TPIN (1122).
+- Never repeat/store TPIN.
+- Never assist outside balance inquiry.
+- Keep responses short and natural.
+- Always end call after closing.
+`;
+
   app.post("/api/session", async (_req, res) => {
     const url = "https://api.openai.com/v1/realtime/sessions";
     const headers = {
@@ -220,8 +341,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const json = JSON.parse(text);
-      console.log("[Realtime] OK", "model=", json?.model, "prompt_id=", promptId, "version=", promptVersion);
-      return res.json({ client_secret: json.client_secret });
+      const sessionId = `web_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      console.log("[Realtime] OK", "model=", json?.model, "prompt_id=", promptId, "version=", promptVersion, "sessionId=", sessionId);
+      return res.json({
+        client_secret: json.client_secret,
+        sessionId,
+        instructions: SESSION_INSTRUCTIONS,
+        tools: TOOLS
+      });
     } catch (e) {
       console.error("Session error:", e);
       return res.status(500).json({ error: "server_error" });
@@ -300,6 +427,39 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
       console.error("Error generating summary:", error);
       res.status(500).json({ error: "Internal server error" });
     }
+  });
+
+  // Save call data endpoint (primarily for web UI)
+  app.post("/api/save-call", async (req, res) => {
+    try {
+      const { sessionId, transcript, accountNumber } = req.body;
+      if (!sessionId) {
+        return res.status(400).json({ error: "sessionId is required" });
+      }
+
+      console.log(`[API] Saving call data for session: ${sessionId}`);
+      const call = await storage.saveCall({
+        callSid: sessionId,
+        transcript,
+        accountNumber
+      });
+
+      res.json({ success: true, call });
+    } catch (error) {
+      console.error("[API] Error saving call:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Proxy endpoint for frontend to check balance
+  app.get("/api/get-balance", async (req, res) => {
+    const accountNumber = req.query.accountNumber as string;
+    if (!accountNumber) {
+      return res.status(400).json({ success: false, message: "accountNumber is required" });
+    }
+    console.log(`[API] Proxy balance inquiry for: ${accountNumber}`);
+    const result = await callUBLBalanceInquiryAPI({ accountNumber });
+    res.json(result);
   });
 
   // Health check endpoint
@@ -432,6 +592,7 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
         prompt: { id: promptId, version: promptVersion }
       };
 
+      // NOTE: This endpoint ACCEPTS the call. Closure is handled separately by the provider or another event.
       const response = await fetch(acceptUrl, {
         method: "POST",
         headers,
@@ -477,6 +638,17 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
     let callSid: string | null = null;
     let openaiWs: WebSocket | null = null;
     let sessionCreated = false;
+    let fullTranscript: { role: string, text: string }[] = [];
+
+    const saveCurrentTranscript = async () => {
+      if (callSid) {
+        const transcriptText = fullTranscript.map(t => `${t.role}: ${t.text}`).join("\n");
+        console.log(`[Twilio WS] Saving transcript for ${callSid} (${fullTranscript.length} lines)`);
+        await storage.saveCall({ callSid, transcript: transcriptText });
+      } else {
+        console.warn(`[Twilio WS] Cannot save transcript: callSid is null`);
+      }
+    };
 
     ws.on("message", async (message: Buffer) => {
       try {
@@ -550,7 +722,8 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
                     prefix_padding_ms: 300,
                     silence_duration_ms: 200  // Shorter for faster interruption
                   },
-                  tools: TOOLS
+                  tools: TOOLS,
+                  instructions: SESSION_INSTRUCTIONS
                 }
               }));
 
@@ -594,13 +767,21 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
                   case "response.audio_transcript.done":
                   case "response.text.done": {
                     const agentText = (event.transcript ?? event.text ?? "").trim();
-                    if (agentText) logConv("AGENT", agentText);
+                    if (agentText) {
+                      logConv("AGENT", agentText);
+                      fullTranscript.push({ role: "AGENT", text: agentText });
+                      await saveCurrentTranscript();
+                    }
                     break;
                   }
 
                   case "conversation.item.input_audio_transcription.completed": {
                     const userText = (event.transcript ?? "").trim();
-                    if (userText) logConv("USER", userText);
+                    if (userText) {
+                      logConv("USER", userText);
+                      fullTranscript.push({ role: "USER", text: userText });
+                      await saveCurrentTranscript();
+                    }
                     break;
                   }
 
@@ -633,6 +814,8 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
                         };
                       } else {
                         try {
+                          console.log(`[OpenAI WS] 🔍 Processing balance inquiry for: ${accountNumber}`);
+
                           // PERSIST: Save to storage first as per user request
                           if (callSid) {
                             console.log(`[Storage] Saving account number for CallSid: ${callSid}`);
@@ -642,9 +825,9 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
                             const storedCall = await storage.getCall(callSid);
                             console.log(`[Storage] Verified stored data:`, JSON.stringify(storedCall));
 
-                            // Use the stored number for the API call
+                            // Use the tool's accountNumber directly to avoid any persistence lag issues
                             functionResult = await callUBLBalanceInquiryAPI({
-                              accountNumber: storedCall?.accountNumber || accountNumber
+                              accountNumber: accountNumber
                             });
                           } else {
                             // Fallback if callSid is missing for some reason
@@ -738,6 +921,7 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
           case "stop":
             console.log(`[CONV] ---------- Call ended (${callSid}) ----------`);
             console.log(`[Twilio WS] Stream stopped: ${streamSid}`);
+            await saveCurrentTranscript();
             if (openaiWs) {
               openaiWs.close();
             }
@@ -748,8 +932,9 @@ Do NOT use bullet points or lists. Write as one or two cohesive paragraphs.`
       }
     });
 
-    ws.on("close", () => {
+    ws.on("close", async () => {
       console.log(`[Twilio WS] Connection closed for stream: ${streamSid}`);
+      await saveCurrentTranscript();
       if (openaiWs) {
         openaiWs.close();
       }
